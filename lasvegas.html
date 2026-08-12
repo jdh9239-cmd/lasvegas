@@ -1,0 +1,1729 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>라스베가스</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body { /* 밤거리 아스팔트: 차콜~네이비. 배경은 철저히 조연 — 스스로 빛나지 않는다 */
+    font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    color:#e6ebf4;
+    touch-action: manipulation;
+    overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+    background:
+      radial-gradient(1500px 1000px at 50% 44%, #171b27 0%, #0e1119 54%, #05070c 100%);
+  }
+  body::before { /* 아스팔트 그레인 (무늬 없음, 질감만) */
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .022 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  body::after { /* 밤 비네트 */
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+    box-shadow: inset 0 0 170px 34px rgba(0,0,0,.62);
+  }
+  #startScreen, #gameScreen, #settleOverlay { position:relative; z-index:1; }
+  button { font-family:inherit; touch-action:manipulation; color:inherit; }
+
+  .goldText {
+    color:#e7c887;
+    text-shadow: 0 0 14px rgba(231,200,135,.35), 0 1px 2px rgba(0,0,0,.5);
+  }
+  @keyframes blink {
+    0%, 100% { border-color:#ffe9a8; box-shadow:0 0 12px rgba(255,233,168,.85); }
+    50%      { border-color:transparent; box-shadow:none; }
+  }
+
+  /* ===== 주사위 아이콘 (간판·표식용, 크림색) ===== */
+  .dieIcon {
+    background:linear-gradient(180deg,#fbf7ec,#e6e0cd);
+    border-radius:22%;
+    box-shadow: inset 0 -2px 2px rgba(0,0,0,.1), 0 2px 4px rgba(0,0,0,.3);
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    padding:3px; flex:none;
+  }
+  .dieIcon i { width:68%; height:68%; place-self:center; border-radius:50%; }
+  .dieIcon i.on { background:#2a2e38; box-shadow: inset 0 1px 1px rgba(0,0,0,.6); }
+
+  /* ===== 실물 주사위 (몸통 = 플레이어 색, 눈 = 흰색 파임) ===== */
+  .die3d {
+    position:absolute; left:0; top:0; border-radius:18%;
+    box-shadow:
+      inset 0 3px 4px rgba(255,255,255,.5),
+      inset 0 -5px 8px rgba(0,0,0,.4),
+      inset -3px 0 5px rgba(0,0,0,.14),
+      0 10px 14px -5px rgba(0,0,0,.65);
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    pointer-events:none; z-index:30;
+    will-change:transform; transition:none;   /* 굴리는 동안은 JS가 매 프레임 직접 그린다 */
+  }
+  .die3d::before { /* 윗면 광택 */
+    content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background:linear-gradient(180deg, rgba(255,255,255,.34), transparent 44%);
+  }
+  .die3d i { width:66%; height:66%; place-self:center; border-radius:50%; }
+  .die3d i.on { /* 흰 눈, 얕게 파인 느낌 */
+    background:#f6f3e8;
+    box-shadow: inset 0 2px 3px rgba(0,0,0,.5), inset 0 -1px 1px rgba(255,255,255,.55);
+  }
+  /* 구르는 동안: 잔상 + 공중에 뜬 그림자. 착지하면 클래스가 빠지며 그림자가 바닥에 안착한다 */
+  .die3d.tumb { filter: blur(.45px) drop-shadow(0 12px 8px rgba(0,0,0,.42)); }
+  /* 같은 눈끼리 모이는 이동은 전환으로 부드럽게 (툭 순간이동 금지) */
+  .die3d.grouping { transition: transform .4s cubic-bezier(.25,.9,.3,1); }
+
+  /* ===== 미니 주사위 (타일·좌석) — 크기는 전부 인라인으로 계산해 넣는다 ===== */
+  .mgroup { position:absolute; display:flex; align-items:center; white-space:nowrap; }
+  .mstack { position:relative; flex:none; }
+  .mstack .mdie { position:absolute; }
+  .mdie {
+    position:relative; border-radius:22%; flex:none;
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    box-shadow: inset 0 1px 2px rgba(255,255,255,.5), inset 0 -2px 3px rgba(0,0,0,.4), 0 2px 4px rgba(0,0,0,.55);
+  }
+  .mdie i { width:72%; height:72%; place-self:center; border-radius:50%; }
+  .mdie i.on { background:#f6f3e8; box-shadow: inset 0 1px 1px rgba(0,0,0,.45); }
+  .mcount {
+    font-weight:900; color:#fff; border-radius:7px; line-height:1;
+    box-shadow: 0 1px 3px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.28);
+    text-shadow:0 1px 1px rgba(0,0,0,.45);
+  }
+  @keyframes tiePulse {
+    0%, 100% { outline:2px solid #fff; outline-offset:1px; }
+    50%      { outline:2px solid transparent; }
+  }
+  .mgroup.tie .mdie { animation:tiePulse .9s linear infinite; }
+
+  /* ===== 지폐: 인라인 SVG 원판 한 장 (가로:세로 = 2.3:1 고정) ===== */
+  .vbill { position:relative; flex:none; line-height:0; }
+  .vbill .bsvg { display:block; width:100%; height:100%; overflow:visible; }
+  .vbill .bsvg > .paper { filter: drop-shadow(0 2px 3px rgba(0,0,0,.42)); }
+  .vbill.v80 .bsvg > .paper { filter: drop-shadow(0 2px 3px rgba(0,0,0,.42)) drop-shadow(0 0 3px rgba(233,201,120,.45)); }
+  .vbill.v90 .bsvg > .paper { filter: drop-shadow(0 2px 3px rgba(0,0,0,.42)) drop-shadow(0 0 6px rgba(246,214,124,.65)); }
+
+  /* ===== 시작 화면 ===== */
+  #startScreen {
+    height:100%; overflow-y:auto;
+    display:flex; flex-direction:column; align-items:center;
+    padding:26px 16px 48px;
+  }
+  #startScreen h1 { font-size:52px; letter-spacing:10px; margin:14px 0 2px; font-weight:900; }
+  #startScreen .sub { color:#9fb0c8; margin-bottom:26px; font-size:16px; letter-spacing:6px; }
+  .panel {
+    background:rgba(16,20,30,.62); border:1px solid rgba(255,255,255,.08); border-radius:18px;
+    padding:20px 24px; margin-bottom:16px; width:min(760px, 100%);
+    box-shadow: 0 6px 18px rgba(0,0,0,.4);
+  }
+  .panel h2 { font-size:18px; margin-bottom:12px; color:#e7c887; letter-spacing:1px; }
+  .panel h2 small { font-weight:400; color:#93a3ba; font-size:13px; letter-spacing:0; }
+  .segRow { display:flex; gap:10px; flex-wrap:wrap; }
+  .segRow button {
+    flex:1; min-width:64px; height:60px; font-size:24px; font-weight:800;
+    border:1px solid rgba(255,255,255,.1); border-radius:14px;
+    background:rgba(255,255,255,.05); color:#eef3e8;
+  }
+  .segRow button.active {
+    background:#e7c887; color:#2c2208; border-color:#e7c887;
+  }
+  #nameList { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr)); gap:12px; }
+  .nameRow { display:flex; align-items:center; gap:12px; }
+  .colorDot { width:34px; height:34px; border-radius:50%; flex:none; border:3px solid rgba(255,255,255,.75); box-shadow:0 2px 4px rgba(0,0,0,.4); }
+  .nameRow input {
+    flex:1; height:56px; font-size:20px; padding:0 16px;
+    border:1px solid rgba(217,185,92,.3); border-radius:12px;
+    background:rgba(250,246,232,.94); color:#222;
+    -webkit-user-select:text; user-select:text;
+  }
+  #startBtn {
+    width:min(760px,100%); height:76px; font-size:27px; font-weight:900; letter-spacing:4px;
+    border:none; border-radius:20px;
+    background:#cf5344; color:#fff;
+    box-shadow:0 4px 0 #8d3025, 0 8px 18px rgba(0,0,0,.35);
+    margin-top:8px;
+  }
+  #startBtn:active { transform:translateY(3px); box-shadow:0 1px 0 #8d3025; }
+
+  /* ===== 게임 화면: 테이블 모드 ===== */
+  #gameScreen { height:100%; display:none; }
+  #gameScreen.on { display:block; }
+  #gameScreen::before { /* 얇고 평평한 테이블 테두리 */
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:8;
+    border-radius:22px;
+    box-shadow:
+      inset 0 0 0 5px rgba(6,8,13,.92),
+      inset 0 0 0 6px rgba(216,189,126,.22),
+      inset 0 0 0 7px rgba(255,255,255,.04),
+      inset 0 0 90px 28px rgba(0,0,0,.42);
+  }
+
+  /* 크기·위치는 실행 시점에 JS가 실제 가용 화면에서 계산한다 (vh/고정치수 사용 금지) */
+  #casinoGrid { position:absolute; display:grid; z-index:5; }
+  /* 밤거리 네온 간판 타일 — "도넛 구조":
+     화려함은 테두리(전구)와 상단 간판에만. 중앙 패드/지폐 영역은 의도적으로 조용한 어두운 단색. */
+  .tile {
+    position:relative;
+    display:flex; flex-direction:column; align-items:stretch; overflow:hidden;
+    background:linear-gradient(180deg, #151926 0%, #0d1017 56%, #0a0c12 100%);
+    border:1px solid rgba(255,255,255,.07); border-radius:20px;
+    padding:10px;
+    box-shadow:
+      0 10px 22px rgba(0,0,0,.6),
+      0 0 22px -9px var(--acc),
+      inset 0 0 0 1px rgba(255,255,255,.03);
+    transition: box-shadow .15s ease, border-color .15s ease;
+  }
+  .tile::before { /* 테두리를 따라 늘어선 작은 전구 점들 (깜빡이지 않음) */
+    content:''; position:absolute; inset:5px; border-radius:15px; pointer-events:none; z-index:3;
+    background-image:
+      radial-gradient(circle at 50% 50%, var(--acc) 1.15px, transparent 1.85px),
+      radial-gradient(circle at 50% 50%, var(--acc) 1.15px, transparent 1.85px),
+      radial-gradient(circle at 50% 50%, var(--acc) 1.15px, transparent 1.85px),
+      radial-gradient(circle at 50% 50%, var(--acc) 1.15px, transparent 1.85px);
+    background-size:12px 5px, 12px 5px, 5px 12px, 5px 12px;
+    background-position:0 0, 0 100%, 0 0, 100% 0;
+    background-repeat:repeat-x, repeat-x, repeat-y, repeat-y;
+    opacity:.8;
+    filter:drop-shadow(0 0 2px var(--glw));
+  }
+  .tile.selected {
+    border-color:rgba(255,233,168,.9);
+    box-shadow:0 0 0 2px rgba(255,233,168,.5), 0 0 26px rgba(255,233,168,.28), 0 10px 22px rgba(0,0,0,.6);
+  }
+  .tile.c1 { --acc:#ffd27a; --glw:rgba(255,210,122,.5); --sg1:#3c3016;  --sg2:#191308; }
+  .tile.c2 { --acc:#ff8fa0; --glw:rgba(255,143,160,.5); --sg1:#3e1d26; --sg2:#1a0c11; }
+  .tile.c3 { --acc:#79dfff; --glw:rgba(121,223,255,.5); --sg1:#123240; --sg2:#08161d; }
+  .tile.c4 { --acc:#8fe9b0; --glw:rgba(143,233,176,.5); --sg1:#17372b; --sg2:#0a1912; }
+  .tile.c5 { --acc:#c3a6ff; --glw:rgba(195,166,255,.5); --sg1:#2c2249; --sg2:#130e21; }
+  .tile.c6 { --acc:#ff9fd6; --glw:rgba(255,159,214,.5); --sg1:#3c1d32; --sg2:#190b15; }
+  .tileSign { /* 간판 실루엣 (타일별 형태 변화). 높이는 타일 크기에 맞춰 JS가 넣는다 */
+    flex:none; margin-bottom:7px; padding-top:4px;
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    position:relative; z-index:2;
+    background:linear-gradient(180deg, var(--sg1) 0%, var(--sg2) 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .tile.c1 .tileSign { border-radius:22px 22px 5px 5px / 30px 30px 5px 5px; }             /* 아치 */
+  .tile.c2 .tileSign { clip-path:polygon(0 50%, 9% 0, 91% 0, 100% 50%, 91% 100%, 9% 100%); } /* 마름모 */
+  .tile.c3 .tileSign { clip-path:polygon(0 28%, 7% 28%, 7% 0, 93% 0, 93% 28%, 100% 28%, 100% 100%, 0 100%); } /* 마퀴 */
+  .tile.c4 .tileSign { border-radius:50% 50% 6px 6px / 46% 46% 6px 6px; }                  /* 돔 */
+  .tile.c5 .tileSign { clip-path:polygon(0 32%, 13% 0, 87% 0, 100% 32%, 100% 100%, 0 100%); } /* 육각 */
+  .tile.c6 .tileSign { clip-path:polygon(0 0, 100% 0, 100% 74%, 50% 100%, 0 74%); }        /* 배너 */
+  .tileSign::after { /* 간판 하단 네온 라인 (은은하게, 애니메이션 없음) */
+    content:''; position:absolute; left:17%; right:17%; bottom:5px; height:2px; border-radius:2px;
+    background:var(--acc); opacity:.55; box-shadow:0 0 7px var(--glw);
+  }
+  .tileSign .dieIcon { width:30px; height:30px; }
+  .emb { width:22px; height:22px; fill:var(--acc); filter:drop-shadow(0 0 3px var(--glw)); }
+  .tileRack { /* 지폐 거치 영역: 패드와 같은 조용한 처리 — 지폐 색이 주인공 */
+    position:relative; flex:none; margin:0 auto; z-index:2;
+  }
+  .tilePad { /* 조용한 어두운 단색 트레이 (무늬 없음). 스크롤 절대 없음 */
+    position:relative; z-index:2;
+    flex:1 1 0; min-height:28px; margin-top:5px;   /* JS가 잡아두는 패드 최소 몫과 맞춘다 */
+    padding:4px; overflow:hidden;
+    border-radius:13px;
+    background:#07090e;
+    box-shadow: inset 0 2px 9px rgba(0,0,0,.85), inset 0 0 0 1px rgba(255,255,255,.045);
+  }
+  #throwZone { /* 어두운 바닥 위 은은한 원형 스포트라이트 */
+    grid-column:1 / 4; grid-row:2;
+    position:relative;
+    background:
+      radial-gradient(46% 92% at 50% 50%, rgba(255,240,205,.10), rgba(255,240,205,.025) 46%, transparent 66%),
+      rgba(0,0,0,.24);
+    border:1px solid rgba(255,255,255,.05); border-radius:18px;
+    box-shadow: inset 0 2px 14px rgba(0,0,0,.55);
+  }
+  #roundCorner {
+    position:absolute; left:10px; top:50%; transform:translateY(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    z-index:2; width:86px;
+  }
+  #roundBadge {
+    background:#e7c887; color:#2c2208;
+    font-weight:900; font-size:15px; padding:5px 12px; border-radius:11px;
+    box-shadow:0 2px 5px rgba(0,0,0,.3);
+  }
+  #bankruptBadge {
+    background:#d15a4c; color:#fff; font-weight:800; font-size:11px;
+    padding:5px 9px; border-radius:10px; text-align:center;
+    border:2px solid transparent;
+    animation:blink 0.9s linear infinite;
+  }
+  #deckStack { position:relative; width:58px; height:27px; }
+  #deckStack i {
+    position:absolute; left:0; right:0; height:20px; border-radius:4px;
+    background:#23304a; border:1px solid rgba(198,214,240,.32);
+  }
+  #deckStack i:nth-child(1) { top:7px; transform:rotate(-2deg); }
+  #deckStack i:nth-child(2) { top:3.5px; transform:rotate(1.5deg); }
+  #deckStack i:nth-child(3) { top:0; box-shadow:inset 0 0 0 1px rgba(217,231,207,.2); }
+
+  .grpHit {
+    position:absolute; top:0; height:100%;
+    background:transparent; border:2px solid transparent; border-radius:16px;
+    z-index:35;
+  }
+  .grpHit .grpBadge {
+    position:absolute; bottom:3px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,.5); color:#e7c887; font-size:13px; font-weight:800;
+    padding:3px 11px; border-radius:11px; white-space:nowrap; pointer-events:none;
+  }
+  .grpHit.sel {
+    border-color:#e7c887; background:rgba(231,200,135,.09);
+    box-shadow:0 0 14px rgba(231,200,135,.3);
+  }
+
+  /* 주사위 전용 계층 — 타일(5)·테두리(8)·좌석(20)보다 위. 굴러가는 동안 무엇도 주사위를 가리지 않는다. */
+  #diceLayer { position:absolute; inset:0; z-index:22; pointer-events:none; }
+
+  /* ===== 좌석 ===== */
+  #seatLayer { position:absolute; inset:0; z-index:20; pointer-events:none; }
+  .seat {
+    position:absolute; transform-origin:50% 100%;
+    /* width:max-content — left만 지정된 절대배치라 화면 오른쪽 좌석이 눌려서 세로로 늘어나는 것을 막는다 */
+    width:max-content;
+    display:flex; flex-direction:column; align-items:center; gap:5px;
+    pointer-events:auto; padding-bottom:5px;
+  }
+  /* 좌석 깊이를 항상 일정하게 유지한다 (버튼·힌트가 있든 없든 동일) →
+     중앙 테이블 영역이 차례마다 들썩이지 않고, 침범도 일어나지 않는다 */
+  .seatMain { display:flex; align-items:flex-end; gap:10px; min-height:104px; }
+  .seatFoot { display:flex; align-items:center; gap:8px; }
+  /* 버튼·힌트 자리는 8개 좌석 모두에 항상 같은 크기로 확보해 둔다.
+     자기 차례가 아니면 그 자리를 비워둘 뿐 없애지 않는다 → 좌석 치수가 절대 변하지 않는다. */
+  .seatCtl  { flex:none; width:274px; height:72px; display:flex; gap:10px; }
+  .seatHint { flex:none; width:230px; height:44px; display:flex; align-items:center; justify-content:center; }
+  .plate { /* 명패 (이름 + 보유 총액 상시 공개) */
+    display:flex; align-items:center; gap:9px;
+    background:#141a27;
+    border:1px solid rgba(231,200,135,.5); border-radius:12px; padding:7px 15px;
+    box-shadow: 0 3px 10px rgba(0,0,0,.5);
+    font-weight:800; font-size:16px; white-space:nowrap;
+  }
+  .plate .colorDot { width:20px; height:20px; border-width:2px; }
+  .plate .ptotal {
+    color:#f3d27a; font-weight:900; font-size:17px;
+    padding-left:10px; margin-left:1px; border-left:1px solid rgba(255,255,255,.18);
+    text-shadow:0 0 10px rgba(243,210,122,.3);
+  }
+  .seat.done .plate { opacity:.45; }
+  @keyframes seatGlow {
+    0%, 100% { box-shadow: 0 0 8px 1px rgba(231,200,135,.3), 0 3px 8px rgba(0,0,0,.36); }
+    50%      { box-shadow: 0 0 20px 5px rgba(231,200,135,.6), 0 3px 8px rgba(0,0,0,.36); }
+  }
+  .seat.active .plate { border-color:#e7c887; animation:seatGlow 1.6s ease-in-out infinite; }
+  /* 좌석 소지품: 실물 주사위알 + 앞면 지갑(액면별 묶음) */
+  /* 소지품은 세로 2단(주사위 위 / 지갑 아래) — 좌석 가로폭을 좁게 유지해
+     8인에서도 옆 좌석과 겹치지 않는다 */
+  .stuff { display:flex; flex-direction:column; align-items:center; gap:3px; flex:none; }
+  .handDice { display:flex; flex-wrap:wrap; justify-content:center; align-content:flex-end;
+    width:128px; min-height:62px; }
+  .mdie.seatDie { width:28px; height:28px; padding:4px; margin:1.5px; border-radius:21%; }
+  .mdie.seatDie i { width:74%; height:74%; }
+  .wallet { /* 액면별 앞면 미니 지폐 + 장수. 폭·칸수는 JS가 계산해 넣는다 */
+    display:flex; flex-wrap:wrap; justify-content:center; align-content:flex-start;
+    gap:2px 6px; flex:none;
+  }
+  .wchip { display:flex; align-items:center; gap:3px; border-radius:5px; }
+  .wchip b { font-weight:900; color:#f0e2bd; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+  @keyframes gainPulse {
+    0%   { box-shadow:0 0 0 0 rgba(255,233,168,0); }
+    35%  { box-shadow:0 0 0 3px rgba(255,233,168,.95), 0 0 14px rgba(255,233,168,.8); }
+    100% { box-shadow:0 0 0 0 rgba(255,233,168,0); }
+  }
+  .wchip.gain { animation:gainPulse 1.1s ease-out; }
+  /* 좌·우 변 좌석은 변을 따라 쓸 수 있는 길이가 짧다 → 버튼을 위아래로 세워 좌석 폭을 줄인다
+     (버튼 크기는 그대로. 모서리에서 옆 좌석과 겹치는 것을 막는다) */
+  .seat.sideEdge .seatCtl  { width:132px; height:152px; flex-direction:column; gap:8px; }
+  .seat.sideEdge .seatFoot { flex-direction:column; gap:4px; }
+  #rollBtn, #confirmBtn {
+    width:132px; height:72px; font-size:22px; font-weight:900; letter-spacing:2px;
+    border-radius:18px; border:none;
+  }
+  #rollBtn { background:#cf5344; color:#fff; box-shadow:0 4px 0 #8d3025, 0 6px 12px rgba(0,0,0,.3); }
+  #confirmBtn { background:#3c86cb; color:#fff; box-shadow:0 4px 0 #1f5590, 0 6px 12px rgba(0,0,0,.3); }
+  #rollBtn:disabled, #confirmBtn:disabled {
+    background:#39463c; box-shadow:0 4px 0 #232a25; opacity:.5;
+  }
+  #rollBtn:not(:disabled):active { transform:translateY(3px); box-shadow:0 1px 0 #8d3025; }
+  #confirmBtn:not(:disabled):active { transform:translateY(3px); box-shadow:0 1px 0 #1f5590; }
+  /* 문구가 길어져도 좌석을 넓히지 않는다: 고정 폭 안에서 두 줄까지 접는다 */
+  #hint {
+    background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08);
+    padding:5px 10px; border-radius:14px; font-size:12.5px; line-height:1.2;
+    pointer-events:none; white-space:normal; text-align:center;
+    width:100%; max-height:44px; overflow:hidden;
+  }
+
+  /* ===== 정산·우승 오버레이 ===== */
+  #settleOverlay {
+    position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(3,5,10,.7); z-index:50;
+  }
+  #settleOverlay.on { display:flex; }
+  .settlePanel {
+    background:#111623;
+    border:1px solid rgba(231,200,135,.45); border-radius:24px;
+    padding:26px 36px; width:min(680px, 92%); max-height:88%; overflow-y:auto;
+    text-align:center;
+    box-shadow:0 18px 44px rgba(0,0,0,.5);
+  }
+  .settlePanel h2 { font-size:27px; margin-bottom:6px; letter-spacing:2px; }
+  .settleBills { display:flex; justify-content:center; flex-wrap:wrap; margin:14px 0 16px; padding-left:26px; }
+  .settleBills .vbill { width:152px; height:66px; margin-left:-26px; margin-bottom:4px; }
+  .settleBills .vbill:nth-child(odd)  { transform:rotate(-2deg); }
+  .settleBills .vbill:nth-child(even) { transform:rotate(2deg) translateY(3px); }
+  .tieBox {
+    background:rgba(224,90,75,.16); border:2px solid #c9564a; border-radius:14px;
+    padding:10px 14px; margin-bottom:12px; font-size:19px;
+  }
+  .tieBox .tieTitle {
+    font-size:21px; font-weight:900; color:#ff9d92; margin-bottom:6px;
+    text-shadow:0 0 10px rgba(255,120,100,.5);
+  }
+  .payRow {
+    display:flex; align-items:center; gap:10px;
+    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.08);
+    border-radius:12px; padding:10px 14px; margin-bottom:8px; font-size:19px; font-weight:700;
+  }
+  .payRow .colorDot { width:24px; height:24px; border-width:2px; flex:none; }
+  .payRow .pname { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:none; max-width:140px; }
+  .payRow .amount { margin-left:auto; font-weight:900; color:#f3d27a; white-space:nowrap; }
+  .payRow .amount.none { color:#93a3ba; font-weight:600; }
+  .payRow .miniBills { display:flex; margin-left:10px; padding-left:30px; flex:0 1 auto; min-width:0; overflow:hidden; }
+  .miniBills .vbill { width:66px; height:29px; margin-left:-30px; }
+  .payRow.rank1 {
+    background:rgba(231,200,135,.18);
+    border:1px solid rgba(231,200,135,.7);
+    position:relative; overflow:hidden;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity:0; scale:.5; }
+    50%      { opacity:1; scale:1.2; }
+  }
+  .payRow.rank1::before, .payRow.rank1::after {
+    content:'✦'; position:absolute; color:#ffe9a8; pointer-events:none;
+    text-shadow:0 0 8px rgba(255,233,168,.9);
+  }
+  .payRow.rank1::before { left:8%; top:2px; font-size:14px; animation:twinkle 1.6s ease-in-out infinite; }
+  .payRow.rank1::after  { right:10%; bottom:1px; font-size:11px; animation:twinkle 1.6s ease-in-out .8s infinite; }
+  .leftNote { color:#9fb0c8; font-size:15px; margin:10px 0 4px; }
+  #settleNextBtn, #nextRoundBtn, #againBtn {
+    margin-top:14px; width:100%; height:66px; font-size:22px; font-weight:900; letter-spacing:2px;
+    border-radius:18px; color:#fff; border:none;
+    background:#3c86cb;
+    box-shadow:0 4px 0 #1f5590;
+  }
+  #settleNextBtn:active, #nextRoundBtn:active, #againBtn:active { transform:translateY(3px); box-shadow:0 1px 0 #1f5590; }
+  #nextRoundBtn { background:#4a9c56; box-shadow:0 4px 0 #266133; }
+  #nextRoundBtn:active { box-shadow:0 1px 0 #266133; }
+  .settleDoneMsg { font-size:27px; font-weight:900; line-height:1.5; padding:16px 0; letter-spacing:2px; }
+</style>
+</head>
+<body>
+
+<!-- ===== 인라인 SVG 원판 라이브러리 (지폐 도안·카지노 상징) ===== -->
+<svg id="artDefs" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+<defs>
+  <!-- 기요셰: 교차하는 가는 물결 패턴 -->
+  <pattern id="guilP" width="46" height="24" patternUnits="userSpaceOnUse">
+    <path d="M0 12 Q11.5 1 23 12 T46 12" fill="none" stroke="#fff" stroke-opacity=".20" stroke-width=".9"/>
+    <path d="M0 12 Q11.5 23 23 12 T46 12" fill="none" stroke="#000" stroke-opacity=".13" stroke-width=".9"/>
+    <path d="M0 5 Q11.5 15 23 5 T46 5"   fill="none" stroke="#fff" stroke-opacity=".10" stroke-width=".55"/>
+    <path d="M0 19 Q11.5 9 23 19 T46 19" fill="none" stroke="#000" stroke-opacity=".08" stroke-width=".55"/>
+  </pattern>
+  <linearGradient id="billSheenG" x1="0" y1="0" x2=".75" y2="1">
+    <stop offset="0"   stop-color="#fff" stop-opacity=".24"/>
+    <stop offset=".42" stop-color="#fff" stop-opacity=".05"/>
+    <stop offset=".6"  stop-color="#000" stop-opacity=".04"/>
+    <stop offset="1"   stop-color="#000" stop-opacity=".13"/>
+  </linearGradient>
+  <linearGradient id="goldSheenG" x1="0" y1="0" x2="1" y2=".7">
+    <stop offset=".2"  stop-color="#fff8e2" stop-opacity="0"/>
+    <stop offset=".38" stop-color="#fff8e2" stop-opacity=".5"/>
+    <stop offset=".56" stop-color="#fff8e2" stop-opacity="0"/>
+  </linearGradient>
+
+  <!-- 지폐 앞면 고정 도안: 프레임·코너장식·메달리온·하단 문구 띠 -->
+  <g id="billFace" fill="none" stroke="currentColor" stroke-linecap="round">
+    <rect x="5" y="5" width="220" height="90" rx="7" stroke-width="1.7"/>
+    <rect x="9" y="9" width="212" height="82" rx="5" stroke-width=".7" opacity=".85"/>
+    <rect x="11.5" y="11.5" width="207" height="77" rx="4" stroke-width=".5" opacity=".5"/>
+    <path d="M14 32 q0 -18 18 -18" stroke-width="1.1" opacity=".8"/>
+    <path d="M216 32 q0 -18 -18 -18" stroke-width="1.1" opacity=".8"/>
+    <path d="M14 68 q0 18 18 18" stroke-width="1.1" opacity=".8"/>
+    <path d="M216 68 q0 18 -18 18" stroke-width="1.1" opacity=".8"/>
+    <g fill="currentColor" stroke="none" opacity=".65">
+      <circle cx="32" cy="32" r="1.7"/><circle cx="198" cy="32" r="1.7"/>
+      <circle cx="32" cy="68" r="1.7"/><circle cx="198" cy="68" r="1.7"/>
+    </g>
+    <path d="M97 14 h36" stroke-width=".8" opacity=".7"/>
+    <circle cx="115" cy="14" r="2.4" stroke-width=".8" opacity=".8"/>
+    <ellipse cx="115" cy="48" rx="31" ry="26" stroke-width="1.4"/>
+    <ellipse cx="115" cy="48" rx="27" ry="22" stroke-width=".6" opacity=".6"/>
+    <g transform="rotate(-12 115 47)">
+      <rect x="102" y="34" width="26" height="26" rx="7" stroke-width="1.2"/>
+      <g fill="currentColor" stroke="none">
+        <circle cx="108.5" cy="40.5" r="2.1"/><circle cx="121.5" cy="40.5" r="2.1"/>
+        <circle cx="115" cy="47" r="2.1"/>
+        <circle cx="108.5" cy="53.5" r="2.1"/><circle cx="121.5" cy="53.5" r="2.1"/>
+      </g>
+    </g>
+    <path d="M71 76 q44 7 88 0 v12 q-44 7 -88 0 z" stroke-width=".8" opacity=".55"/>
+    <text x="115" y="86" font-size="7" font-family="Georgia,'Times New Roman',serif"
+          letter-spacing="1.1" text-anchor="middle" fill="currentColor" stroke="none" opacity=".9">LAS VEGAS BANK</text>
+  </g>
+
+  <!-- 카지노별 상징 (전부 창작: 별·마름모·왕관·초승달·클로버·편자) -->
+  <!-- 지폐 뒷면 고정 도안 (액면 정보 없음) — 라운드 분배 뒤집기 연출용 -->
+  <g id="billBack" fill="none" stroke="currentColor" stroke-linecap="round">
+    <rect x="5" y="5" width="220" height="90" rx="7" stroke-width="1.7"/>
+    <rect x="9" y="9" width="212" height="82" rx="5" stroke-width=".7" opacity=".8"/>
+    <rect x="11.5" y="11.5" width="207" height="77" rx="4" stroke-width=".5" opacity=".45"/>
+    <path d="M14 32 q0 -18 18 -18" stroke-width="1.1" opacity=".7"/>
+    <path d="M216 32 q0 -18 -18 -18" stroke-width="1.1" opacity=".7"/>
+    <path d="M14 68 q0 18 18 18" stroke-width="1.1" opacity=".7"/>
+    <path d="M216 68 q0 18 -18 18" stroke-width="1.1" opacity=".7"/>
+    <circle cx="115" cy="52" r="26" stroke-width="1.3"/>
+    <circle cx="115" cy="52" r="20" stroke-width=".7" opacity=".7"/>
+    <circle cx="115" cy="52" r="10" stroke-width="1" opacity=".9"/>
+    <g opacity=".75" stroke-width=".8">
+      <path d="M115 30 v6"/><path d="M115 68 v6"/><path d="M93 52 h6"/><path d="M131 52 h6"/>
+      <path d="M100 37 l4 4"/><path d="M130 67 l-4 -4"/><path d="M130 37 l-4 4"/><path d="M100 67 l4 -4"/>
+    </g>
+    <path d="M115 46 l1.9 4 4.3.6-3.1 3 .7 4.3-3.8-2-3.8 2 .7-4.3-3.1-3 4.3-.6z" fill="currentColor" stroke="none" opacity=".9"/>
+    <g opacity=".5" stroke-width=".7">
+      <ellipse cx="52" cy="52" rx="21" ry="15"/><ellipse cx="52" cy="52" rx="14" ry="9"/>
+      <ellipse cx="178" cy="52" rx="21" ry="15"/><ellipse cx="178" cy="52" rx="14" ry="9"/>
+    </g>
+    <text x="115" y="20" font-size="7" font-family="Georgia,'Times New Roman',serif"
+          letter-spacing="2.4" text-anchor="middle" fill="currentColor" stroke="none" opacity=".85">LAS VEGAS</text>
+  </g>
+
+  <g id="em1"><path d="M12 2 l2.9 6.4 7 .8-5.2 4.7 1.4 6.9L12 17.4 5.9 20.8l1.4-6.9L2.1 9.2l7-.8z"/></g>
+  <g id="em2"><path d="M12 2 L21 12 L12 22 L3 12 Z"/></g>
+  <g id="em3"><path d="M3 17.6 L4.6 6.5 L9 11.6 L12 3.4 L15 11.6 L19.4 6.5 L21 17.6 Z"/><rect x="3.4" y="18.8" width="17.2" height="2.6" rx="1.2"/></g>
+  <g id="em4"><path d="M15.8 3.4 Q7 6.8 7 12 Q7 17.2 15.8 20.6 Q11.4 16.6 11.4 12 Q11.4 7.4 15.8 3.4 Z"/><path d="M19.4 6.4l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></g>
+  <g id="em5"><path d="M12 2.6c2 0 3.6 1.6 3.6 3.6 0 .6-.1 1.1-.4 1.6.5-.2 1-.4 1.6-.4 2 0 3.6 1.6 3.6 3.6s-1.6 3.6-3.6 3.6c-.6 0-1.1-.1-1.6-.4.2.5.4 1 .4 1.6 0 2-1.6 3.6-3.6 3.6s-3.6-1.6-3.6-3.6c0-.6.1-1.1.4-1.6-.5.2-1 .4-1.6.4-2 0-3.6-1.6-3.6-3.6s1.6-3.6 3.6-3.6c.6 0 1.1.1 1.6.4-.2-.5-.4-1-.4-1.6 0-2 1.6-3.6 3.6-3.6z"/></g>
+  <g id="em6"><path d="M12 2.4c4.8 0 8.7 3.9 8.7 8.7v10.5h-4.8V11.1a3.9 3.9 0 10-7.8 0v10.5H3.3V11.1c0-4.8 3.9-8.7 8.7-8.7z"/></g>
+</defs>
+</svg>
+
+<!-- ===== 시작 화면 ===== -->
+<div id="startScreen">
+  <h1 class="goldText">라스베가스</h1>
+  <div class="sub">TABLE EDITION</div>
+
+  <div class="panel">
+    <h2>인원수</h2>
+    <div class="segRow" id="playerSeg"></div>
+  </div>
+
+  <div class="panel">
+    <h2>라운드 수</h2>
+    <div class="segRow" id="roundSeg"></div>
+  </div>
+
+  <div class="panel">
+    <h2>플레이어 이름 <small>(비우면 자동)</small></h2>
+    <div id="nameList"></div>
+  </div>
+
+  <button id="startBtn">게임 시작</button>
+</div>
+
+<!-- ===== 게임 화면: 테이블 모드 ===== -->
+<div id="gameScreen">
+  <div id="casinoGrid">
+    <div class="tile c1" id="tile1"></div>
+    <div class="tile c2" id="tile2"></div>
+    <div class="tile c3" id="tile3"></div>
+    <div id="throwZone">
+      <div id="roundCorner">
+        <div id="roundBadge">1/4</div>
+        <div id="bankruptBadge" style="display:none">은행 파산!<br>최종 라운드</div>
+        <div id="deckStack"><i></i><i></i><i></i></div>
+      </div>
+    </div>
+    <div class="tile c4" id="tile4"></div>
+    <div class="tile c5" id="tile5"></div>
+    <div class="tile c6" id="tile6"></div>
+  </div>
+  <div id="seatLayer"></div>
+  <!-- 굴러다니는 주사위 전용 계층: 배치 흐름 밖이라 판을 흔들지 않는다 -->
+  <div id="diceLayer"></div>
+</div>
+
+<!-- 좌석으로 이동하는 컨트롤들의 대기 위치 -->
+<div id="controlDock" style="display:none">
+  <div id="hint"></div>
+  <button id="rollBtn">굴리기</button>
+  <button id="confirmBtn" disabled>확정</button>
+</div>
+
+<div id="settleOverlay"><div class="settlePanel" id="settlePanel"></div></div>
+
+<script>
+'use strict';
+
+/* ===== 상수 (룰 데이터 — 변경 금지) ===== */
+const COLORS = [
+  { name:'빨강', hex:'#e53935' },
+  { name:'파랑', hex:'#1e88e5' },
+  { name:'초록', hex:'#43a047' },
+  { name:'보라', hex:'#8e24aa' },
+  { name:'주황', hex:'#fb8c00' },
+  { name:'청록', hex:'#00acc1' },
+  { name:'분홍', hex:'#ec407a' },
+  { name:'갈색', hex:'#6d4c41' },
+];
+// 지폐 54장: [액면, 장수]
+const BILL_SET = [
+  [10000,6],[20000,8],[30000,8],[40000,6],[50000,6],
+  [60000,5],[70000,5],[80000,5],[90000,5],
+];
+const CASINO_TARGET = 50000;
+const DICE_PER_PLAYER = 8;
+
+/* ===== 게임 상태 ===== */
+const game = {
+  players: [],
+  roundsTotal: 4,
+  currentRound: 1,
+  deck: [],           // 남은 지폐 더미 (앞이 맨 위). 게임 시작 시 1회만 셔플.
+  casinos: [],        // [{bills:[], dice:{playerIdx: n}}] × 6
+  turn: 0,
+  rolled: null,       // {face: 개수} — 연출 시작 전에 확정됨
+  selectedFace: null,
+  finished: false,
+  settle: null,
+  starter: 0,
+  bankrupt: false,
+};
+
+/* ===== 유틸 ===== */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+function money(v) { return '$' + v.toLocaleString('en-US'); }
+function shade(hex, t) { // t>0 밝게, t<0 어둡게 (hex 입력)
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const m = t > 0 ? 255 : 0, a = Math.abs(t);
+  r = Math.round(r + (m - r) * a); g = Math.round(g + (m - g) * a); b = Math.round(b + (m - b) * a);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+function tone(hex, grayAmt) { // 채도 낮추기 (형광 방지)
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const L = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  r = Math.round(r + (L - r) * grayAmt); g = Math.round(g + (L - g) * grayAmt); b = Math.round(b + (L - b) * grayAmt);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+function diceBodyStyle(hex) {
+  const c = tone(hex, .2); // 고급스러운 채도로
+  return 'background:linear-gradient(172deg,' + shade(c, .38) + ' 0%,' + c + ' 48%,' + shade(c, -.32) + ' 100%)';
+}
+
+const PIPS = { 1:[5], 2:[1,9], 3:[1,5,9], 4:[1,3,7,9], 5:[1,3,5,7,9], 6:[1,3,4,6,7,9] };
+function dieFaceCells(face) {
+  let cells = '';
+  for (let c = 1; c <= 9; c++) cells += '<i class="' + (PIPS[face].includes(c) ? 'on' : '') + '"></i>';
+  return cells;
+}
+function dieHTML(face) { return '<span class="dieIcon">' + dieFaceCells(face) + '</span>'; }
+
+function emblemSVG(n) {
+  return '<svg class="emb" viewBox="0 0 24 24"><use href="#em' + n + '"/></svg>';
+}
+
+/* ===== 지폐 원판 (인라인 SVG 한 장 = 230×100, 2.3:1 고정) =====
+   액면별 주색상: 저액 담녹 → 청록 → 청 → 자 → 동 → 80·90K 금색 */
+const BILL_INK = {
+  10: { p:'#b8c2ae', i:'#465336' },
+  20: { p:'#9cc396', i:'#365a32' },
+  30: { p:'#8ec9c0', i:'#295d56' },
+  40: { p:'#94b4d9', i:'#2b4d75' },
+  50: { p:'#a99cd5', i:'#3b3272' },
+  60: { p:'#c79ac7', i:'#5d2d65' },
+  70: { p:'#d5a17b', i:'#6a4320' },
+  80: { p:'#e4c678', i:'#6b5110' },
+  90: { p:'#f4d673', i:'#77580c' },
+};
+const BILL_VB = '<svg class="bsvg" viewBox="0 0 230 100" preserveAspectRatio="xMidYMid meet">';
+
+// 지폐 앞면 (카지노·정산·분배 연출·우승 화면 공용 원판)
+function billHTML(v, cls, style) {
+  const k = v / 1000, c = BILL_INK[k];
+  const svg = BILL_VB + '<g class="paper">' +
+    '<rect x="2" y="2" width="226" height="96" rx="7" fill="' + c.p + '"/>' +
+    '<rect x="2" y="2" width="226" height="96" rx="7" fill="url(#guilP)"/>' +
+    (k >= 80 ? '<rect x="2" y="2" width="226" height="96" rx="7" fill="url(#goldSheenG)"/>' : '') +
+    '<rect x="2" y="2" width="226" height="96" rx="7" fill="url(#billSheenG)"/>' +
+    '<g style="color:' + c.i + '"><use href="#billFace"/></g>' +
+    '<g fill="' + c.i + '" font-family="Georgia,\'Times New Roman\',serif" font-weight="bold">' +
+      '<text x="48" y="60.5" font-size="34" text-anchor="middle" fill="#fff" opacity=".22">' + k + '</text>' +
+      '<text x="47" y="59" font-size="34" text-anchor="middle">' + k + '</text>' +
+      '<text x="184" y="60.5" font-size="34" text-anchor="middle" fill="#fff" opacity=".22">' + k + '</text>' +
+      '<text x="183" y="59" font-size="34" text-anchor="middle">' + k + '</text>' +
+      '<text x="34" y="19" font-size="10">' + k + '</text>' +
+      '<text x="196" y="19" font-size="10" text-anchor="end">' + k + '</text>' +
+      '<text x="34" y="87" font-size="10">' + k + '</text>' +
+      '<text x="196" y="87" font-size="10" text-anchor="end">' + k + '</text>' +
+    '</g></g></svg>';
+  return '<div class="vbill v' + k + (cls ? ' ' + cls : '') + '"' +
+    (style ? ' style="' + style + '"' : '') + '>' + svg + '</div>';
+}
+
+// 지폐 뒷면 (액면 정보 없음) — 라운드 분배에서 뒤집히기 전 모습. 더미 색과 같은 계열.
+function billBackHTML(style) {
+  const svg = BILL_VB + '<g class="paper">' +
+    '<rect x="2" y="2" width="226" height="96" rx="7" fill="#23304a"/>' +
+    '<rect x="2" y="2" width="226" height="96" rx="7" fill="url(#guilP)"/>' +
+    '<rect x="2" y="2" width="226" height="96" rx="7" fill="url(#billSheenG)"/>' +
+    '<g style="color:#c6d6f0"><use href="#billBack"/></g>' +
+    '</g></svg>';
+  return '<div class="vbill back"' + (style ? ' style="' + style + '"' : '') + '>' + svg + '</div>';
+}
+
+/* ===== 시작 화면 ===== */
+let selPlayers = 4, selRounds = 4;
+
+function buildSeg(el, onPick, getSel) {
+  el.innerHTML = '';
+  for (let n = 2; n <= 8; n++) {
+    const b = document.createElement('button');
+    b.textContent = n;
+    if (n === getSel()) b.classList.add('active');
+    b.addEventListener('click', () => {
+      onPick(n);
+      el.querySelectorAll('button').forEach(x => x.classList.toggle('active', +x.textContent === n));
+    });
+    el.appendChild(b);
+  }
+}
+
+function buildNameInputs() {
+  const list = document.getElementById('nameList');
+  const prev = [...list.querySelectorAll('input')].map(i => i.value);
+  list.innerHTML = '';
+  for (let i = 0; i < selPlayers; i++) {
+    const row = document.createElement('div');
+    row.className = 'nameRow';
+    const dot = document.createElement('div');
+    dot.className = 'colorDot';
+    dot.style.background = COLORS[i].hex;
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.maxLength = 10;
+    inp.placeholder = '플레이어' + (i + 1);
+    if (prev[i]) inp.value = prev[i];
+    row.appendChild(dot);
+    row.appendChild(inp);
+    list.appendChild(row);
+  }
+}
+
+buildSeg(document.getElementById('playerSeg'), n => { selPlayers = n; buildNameInputs(); }, () => selPlayers);
+buildSeg(document.getElementById('roundSeg'), n => { selRounds = n; }, () => selRounds);
+buildNameInputs();
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  const inputs = [...document.querySelectorAll('#nameList input')];
+  game.players = inputs.map((inp, i) => ({
+    name: inp.value.trim() || ('플레이어' + (i + 1)),
+    color: COLORS[i],
+    diceLeft: DICE_PER_PLAYER,
+    bills: [],
+  }));
+  game.roundsTotal = selRounds;
+  game.currentRound = 1;
+  game.deck = buildDeck(); // 더미 생성·셔플은 게임 시작 시 딱 한 번
+  game.starter = 0;
+  game.bankrupt = false;
+  // 화면을 먼저 보여야 라운드 시작 연출이 좌표를 잡을 수 있다
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('gameScreen').classList.add('on');
+  startRound();
+});
+
+/* ===== 라운드 세팅 ===== */
+function buildDeck() {
+  const d = [];
+  for (const [value, count] of BILL_SET)
+    for (let i = 0; i < count; i++) d.push(value);
+  return shuffle(d);
+}
+
+function startRound() {
+  // 각 라운드는 기존 더미의 맨 위에서부터 뽑기만 한다 (재셔플 없음)
+  game.casinos = [];
+  for (let c = 0; c < 6; c++) {
+    const bills = [];
+    let sum = 0;
+    // 합계 $50,000 이상이 되는 순간까지 한 장씩, 넘는 순간 즉시 멈춤
+    while (sum < CASINO_TARGET && game.deck.length > 0) {
+      const bill = game.deck.shift();
+      bills.push(bill);
+      sum += bill;
+    }
+    game.casinos.push({ bills, dice: {} });
+  }
+  // 은행 파산: 재충전 도중 더미가 바닥나 $50,000을 못 채운 카지노가 있으면 최종 라운드
+  if (game.casinos.some(c => c.bills.reduce((s, v) => s + v, 0) < CASINO_TARGET)) {
+    game.bankrupt = true;
+  }
+  game.turn = game.starter;
+  game.rolled = null;
+  game.selectedFace = null;
+  game.finished = false;
+  game.settle = null;
+  renderAll();
+  startDealAnimation(); // 연출: 더미에서 지폐가 각 카지노로 날아감 (탭으로 스킵)
+}
+
+/* ===== 좌석 기하 ===== */
+const tableGeo = { seats: [] };
+// 지갑 칸의 폭·높이 예산 (좌석 가로폭과 깊이를 일정하게 묶어두기 위한 값)
+const WALLET_W = 176, WALLET_H = 38;
+
+/* ===== 테이블 배치: 실제 가용 화면을 읽어 [좌석띠 | 중앙 | 좌석띠]로 나눈다 =====
+   vh·고정 픽셀을 쓰지 않는다. 주소창이 공간을 먹어도, 창이 바뀌어도 그때그때 다시 계산한다. */
+const layout = { tileW: 0, tileH: 0, throwH: 0, signH: 34, gx: 14, gy: 10, key: '', field: null };
+const EDGE_GAP = 10;   // 좌석띠와 중앙 영역 사이 최소 여백
+
+/* 판은 한 번 정해지면 게임이 끝날 때까지 움직이지 않는다.
+   화면 크기(또는 인원 구성)가 바뀔 때만 force로 다시 잡는다. */
+function computeLayout(force) {
+  const W = window.innerWidth, H = window.innerHeight;
+  const key = W + 'x' + H + 'x' + game.players.length;
+  if (!force && layout.key === key) return;
+  const layer = document.getElementById('seatLayer');
+  // 좌석이 실제로 먹은 깊이를 변끼리 실측한다 (렌더·화면밖 보정이 끝난 뒤에 호출)
+  const inset = { top: 0, right: 0, bottom: 0, left: 0 };
+  [...layer.children].forEach((seat, i) => {
+    const s = tableGeo.seats[i];
+    if (!s) return;
+    const r = seat.getBoundingClientRect();
+    if (s.edge === 'bottom')     inset.bottom = Math.max(inset.bottom, H - r.top);
+    else if (s.edge === 'top')   inset.top    = Math.max(inset.top, r.bottom);
+    else if (s.edge === 'left')  inset.left   = Math.max(inset.left, r.right);
+    else                         inset.right  = Math.max(inset.right, W - r.left);
+  });
+
+  const availL = inset.left + EDGE_GAP, availT = inset.top + EDGE_GAP;
+  const availW = Math.max(210, W - inset.left - inset.right - EDGE_GAP * 2);
+  const availH = Math.max(120, H - inset.top - inset.bottom - EDGE_GAP * 2);
+
+  const gx = layout.gx, gy = layout.gy;
+  const tileW = Math.max(104, Math.min(250, Math.floor((availW - gx * 2) / 3)));
+  const innerH = availH - gy * 2;
+  let throwH = Math.max(66, Math.min(136, Math.round(innerH * 0.26)));
+  let tileH = Math.floor((innerH - throwH) / 2);
+  if (tileH > 186) { tileH = 186; throwH = Math.min(172, innerH - tileH * 2); }   // 너무 커지지 않게
+  if (tileH < 66)  { tileH = Math.max(48, Math.floor((innerH - 66) / 2)); throwH = Math.max(48, innerH - tileH * 2); }
+
+  layout.tileW = tileW; layout.tileH = tileH; layout.throwH = throwH;
+  layout.signH = Math.max(22, Math.min(40, Math.round(tileH * 0.24)));
+  layout.key = key;
+  // 주사위가 굴러다닐 수 있는 테이블 전역 (좌석띠를 제외한 안쪽 전부)
+  layout.field = { x: availL, y: availT, w: availW, h: availH };
+
+  const gridW = tileW * 3 + gx * 2, gridH = tileH * 2 + throwH + gy * 2;
+  const grid = document.getElementById('casinoGrid');
+  grid.style.gridTemplateColumns = tileW + 'px ' + tileW + 'px ' + tileW + 'px';
+  grid.style.gridTemplateRows = tileH + 'px ' + throwH + 'px ' + tileH + 'px';
+  grid.style.gap = gy + 'px ' + gx + 'px';
+  grid.style.left = Math.round(availL + (availW - gridW) / 2) + 'px';
+  grid.style.top = Math.round(availT + (availH - gridH) / 2) + 'px';
+}
+
+function seatTransforms(N, W, H) {
+  const P = 2 * (W + H);
+  const out = [];
+  for (let i = 0; i < N; i++) {
+    const d = (i / N) * P;
+    const wHalf = W / 2;
+    let x, y, edge;
+    if (d < wHalf)                       { x = W / 2 + d;                 y = H;                    edge = 'bottom'; }
+    else if (d < wHalf + H)              { x = W;                         y = H - (d - wHalf);      edge = 'right'; }
+    else if (d < wHalf + H + W)          { x = W - (d - wHalf - H);       y = 0;                    edge = 'top'; }
+    else if (d < wHalf + 2 * H + W)      { x = 0;                         y = d - (wHalf + H + W);  edge = 'left'; }
+    else                                 { x = d - (wHalf + 2 * H + W);   y = H;                    edge = 'bottom'; }
+    const rot = { bottom:0, right:-90, top:180, left:90 }[edge];
+    out.push({ x, y, rot, edge });
+  }
+  return out;
+}
+
+function dockControls() {
+  const dock = document.getElementById('controlDock');
+  dock.appendChild(document.getElementById('hint'));
+  dock.appendChild(document.getElementById('rollBtn'));
+  dock.appendChild(document.getElementById('confirmBtn'));
+}
+
+// 정산에서 방금 받은 액면 묶음을 잠깐 강조 (즉시 갱신되는 것이 보이도록)
+const seatFlash = {};
+function flashSeatGain(pi, v) {
+  seatFlash[pi] = v;
+  renderSeats();
+  setTimeout(() => {
+    if (seatFlash[pi] === v) { delete seatFlash[pi]; renderSeats(); }
+  }, 1150);
+}
+
+function renderSeats() {
+  dockControls();
+  const layer = document.getElementById('seatLayer');
+  layer.innerHTML = '';
+  const seats = seatTransforms(game.players.length, window.innerWidth, window.innerHeight);
+  tableGeo.seats = seats;
+  game.players.forEach((pl, i) => {
+    const s = seats[i];
+    const seat = document.createElement('div');
+    seat.className = 'seat' +
+      (i === game.turn && !game.finished ? ' active' : '') +
+      (s.edge === 'left' || s.edge === 'right' ? ' sideEdge' : '') +
+      (pl.diceLeft === 0 ? ' done' : '');
+    seat.style.left = s.x + 'px';
+    seat.style.top = s.y + 'px';
+    seat.style.transform = 'translate(-50%,-100%) rotate(' + s.rot + 'deg)';
+    const isActive = i === game.turn && !game.finished;
+    // 소지품: 실물 미니 주사위 + 앞면 지갑 (보유 지폐 액면별 상시 공개)
+    const thrown = i === game.turn && game.rolled; // 던진 동안엔 손이 빔
+    const nDice = thrown ? 0 : pl.diceLeft;
+    let diceHtml = '';
+    for (let k = 0; k < nDice; k++) {
+      const rot = (((i * 13 + k * 41) % 7) - 3) * 0.9; // 가지런하되 완전 기계적이지 않게
+      diceHtml += '<span class="mdie seatDie" style="' + diceBodyStyle(pl.color.hex) +
+        ';transform:rotate(' + rot + 'deg)">' + dieFaceCells((i + k) % 6 + 1) + '</span>';
+    }
+    // 액면별로 묶어 미니 지폐 + 장수. 폭 예산(WALLET_W) 안에 전부 들어가도록 크기를 고른다
+    const byVal = {};
+    pl.bills.forEach(v => { byVal[v] = (byVal[v] || 0) + 1; });
+    const vals = Object.keys(byVal).map(Number).sort((a, b) => b - a);
+    const nv = vals.length;
+    let bw = 44, cols = 1;
+    for (const w of [62, 52, 44, 36, 30, 25]) {
+      bw = w;
+      const chipW = w + 3 + Math.max(15, Math.round(w * 0.36));
+      cols = Math.max(1, Math.floor((WALLET_W + 6) / (chipW + 6)));
+      const rows = Math.ceil(nv / cols);
+      if (rows * (Math.round(w / 2.3) + 2) + (rows - 1) * 2 <= WALLET_H) break;
+    }
+    const bh = Math.round(bw / 2.3);
+    const fs = Math.max(10, Math.min(13, Math.round(bw * 0.22)));
+    const walletHtml = vals.map(v =>
+      '<span class="wchip' + (seatFlash[i] === v ? ' gain' : '') + '">' +
+      billHTML(v, '', 'width:' + bw + 'px;height:' + bh + 'px') +
+      '<b style="font-size:' + fs + 'px">×' + byVal[v] + '</b></span>').join('');
+    const stuff = document.createElement('div');
+    stuff.className = 'stuff';
+    stuff.innerHTML = '<span class="handDice">' + diceHtml + '</span>' +
+      '<span class="wallet" style="width:' + WALLET_W + 'px;min-height:' + WALLET_H + 'px">' + walletHtml + '</span>';
+
+    const main = document.createElement('div');
+    main.className = 'seatMain';
+    main.appendChild(stuff);
+    // 버튼 자리는 모든 좌석에 항상 만든다 (차례가 아니면 빈 채로 둔다)
+    const ctl = document.createElement('div');
+    ctl.className = 'seatCtl';
+    if (isActive) {
+      ctl.appendChild(document.getElementById('rollBtn'));
+      ctl.appendChild(document.getElementById('confirmBtn'));
+    }
+    main.appendChild(ctl);
+    seat.appendChild(main);
+
+    const plate = document.createElement('div');
+    plate.className = 'plate';
+    plate.innerHTML =
+      '<span class="colorDot" style="background:' + pl.color.hex + '"></span>' +
+      '<span>' + pl.name + '</span>' +
+      '<span class="ptotal">' + money(pl.bills.reduce((s, v) => s + v, 0)) + '</span>';
+    const foot = document.createElement('div');
+    foot.className = 'seatFoot';
+    foot.appendChild(plate);
+    // 힌트 자리도 모든 좌석에 항상 만든다 (고정 폭 — 문구 길이가 좌석을 넓히지 못한다)
+    const hintBox = document.createElement('div');
+    hintBox.className = 'seatHint';
+    if (isActive) hintBox.appendChild(document.getElementById('hint'));
+    foot.appendChild(hintBox);
+    seat.appendChild(foot);
+    layer.appendChild(seat);
+  });
+  const els = [...layer.children];
+  const apply = () => els.forEach((seat, i) => {
+    seat.style.left = seats[i].x + 'px';
+    seat.style.top = seats[i].y + 'px';
+  });
+  // 화면 밖으로 삐져나온 좌석을 안쪽으로 당긴다
+  const clampOnScreen = () => {
+    const W = window.innerWidth, H = window.innerHeight;
+    els.forEach((seat, i) => {
+      const r = seat.getBoundingClientRect();
+      let dx = 0, dy = 0;
+      if (r.left < 0) dx = -r.left;
+      else if (r.right > W) dx = W - r.right;
+      if (r.top < 0) dy = -r.top;
+      else if (r.bottom > H) dy = H - r.bottom;
+      if (dx || dy) { seats[i].x += dx; seats[i].y += dy; }
+    });
+    apply();
+  };
+  clampOnScreen();
+
+  // 모서리에서 서로 다른 변의 좌석끼리 겹치면 각자 자기 변을 따라 밀어 떼어놓는다
+  for (let iter = 0; iter < 8; iter++) {
+    const rs = els.map(e => e.getBoundingClientRect());
+    let moved = false;
+    for (let a = 0; a < rs.length; a++) {
+      for (let b = a + 1; b < rs.length; b++) {
+        const A = rs[a], B = rs[b];
+        const ox = Math.min(A.right, B.right) - Math.max(A.left, B.left);
+        const oy = Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top);
+        if (ox <= 0 || oy <= 0) continue;
+        const isX = i => seats[i].edge === 'bottom' || seats[i].edge === 'top';
+        const xm = [a, b].filter(isX), ym = [a, b].filter(i => !isX(i));
+        if (xm.length && (ox <= oy || !ym.length)) {
+          const step = ox / xm.length + 1;
+          xm.forEach(i => {
+            const mine = i === a ? A : B, other = i === a ? B : A;
+            seats[i].x += (mine.left + mine.right < other.left + other.right ? -1 : 1) * step;
+          });
+        } else if (ym.length) {
+          const step = oy / ym.length + 1;
+          ym.forEach(i => {
+            const mine = i === a ? A : B, other = i === a ? B : A;
+            seats[i].y += (mine.top + mine.bottom < other.top + other.bottom ? -1 : 1) * step;
+          });
+        }
+        moved = true;
+      }
+    }
+    if (!moved) break;
+    apply();
+    clampOnScreen();
+  }
+}
+
+/* ===== 렌더링 ===== */
+function renderCorner() {
+  document.getElementById('roundBadge').textContent = game.currentRound + '/' + game.roundsTotal;
+  document.getElementById('bankruptBadge').style.display = game.bankrupt ? 'block' : 'none';
+}
+
+/* --- 카지노 패드 배치 계산 ---
+   원칙: 개수가 몇이든 "실제 주사위알"을 전부 보여준다. 요약 뱃지만 남기는 모드는 없다.
+   색깔별 묶음을 카드 부채꼴처럼 옆으로 겹쳐 늘어놓고, 안 들어가면
+   (1) 겹침을 더 촘촘히 → (2) 묶음을 두 줄로 → (3) 알 크기를 줄인다.
+   ×N 뱃지는 개수 가독성을 위한 보조로 항상 함께 붙는다. 스크롤은 절대 만들지 않는다. */
+const PAD_INSET = 4;       // .tilePad padding
+const MIN_REVEAL = 0.17;   // 겹쳐도 아래 알이 최소 이만큼은 드러나야 셀 수 있다
+function fitPad(counts, W, H) {
+  const G = counts.length, GY = 3, GX = 6;
+  const badgeW = s => Math.max(18, s * 1.15);
+  for (let cols = 1; cols <= Math.min(3, G); cols++) {
+    const rows = Math.ceil(G / cols);
+    const cellW = (W - (cols - 1) * GX) / cols;
+    const cellH = (H - (rows - 1) * GY) / rows;
+    for (let s = 24; s >= 9; s -= 0.5) {
+      const stackW = cellW - badgeW(s) - 3;
+      if (stackW < s) continue;
+      for (const sub of [1, 2]) {                  // 한 묶음을 한 줄 또는 두 줄로
+        if (s * sub + (sub - 1) * 2 > cellH) continue;
+        const ok = counts.every(n => {
+          const k = Math.ceil(n / sub);            // 한 줄에 놓이는 최대 알 수
+          if (k <= 1) return true;
+          return (stackW - s) / (k - 1) >= s * MIN_REVEAL;
+        });
+        if (ok) return { s, cols, rows, sub, cellW, cellH, stackW };
+      }
+    }
+  }
+  // 마지막 안전망: 가장 작은 알로 두 줄씩 (그래도 알은 전부 보여준다)
+  const cols = Math.min(3, G), rows = Math.ceil(G / cols);
+  const cellW = (W - (cols - 1) * GX) / cols, cellH = (H - (rows - 1) * GY) / rows;
+  return { s: 9, cols, rows, sub: 2, cellW, cellH, stackW: Math.max(9, cellW - 18 - 3) };
+}
+
+function fillPad(pad, cas, ci) {
+  const entries = Object.entries(cas.dice)
+    .map(([pi, n]) => [Number(pi), n])
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+  if (!entries.length) { pad.innerHTML = ''; return; }
+
+  // 동점 판정: 같은 개수를 가진 색이 2명 이상이면 그 색 주사위들이 함께 깜빡임
+  const countFreq = {};
+  entries.forEach(([, n]) => { countFreq[n] = (countFreq[n] || 0) + 1; });
+
+  const W = Math.max(40, pad.clientWidth - PAD_INSET * 2);
+  const H = Math.max(16, pad.clientHeight - PAD_INSET * 2);
+  const lay = fitPad(entries.map(e => e[1]), W, H);
+  const s = lay.s;
+  const fs = Math.max(9, Math.min(13, Math.round(s * 0.56)));
+  const GY = 3, GX = 6;
+
+  let html = '';
+  entries.forEach(([pi, n], gi) => {
+    const pl = game.players[pi];
+    const k = Math.ceil(n / lay.sub);                        // 한 줄에 놓을 알 수
+    const step = k > 1 ? Math.min(s * 0.62, (lay.stackW - s) / (k - 1)) : 0;
+    const stackW = s + step * (k - 1);
+    const rowsUsed = Math.ceil(n / k);
+    const stackH = s * rowsUsed + (rowsUsed - 1) * 2;
+    let dice = '';
+    for (let d = 0; d < n; d++) {
+      const rr = Math.floor(d / k), cc = d % k;
+      const rot = ((ci * 5 + pi * 11 + d * 47) % 13) - 6;
+      dice += '<span class="mdie" style="' + diceBodyStyle(pl.color.hex) +
+        ';width:' + s + 'px;height:' + s + 'px;padding:' + (s * 0.15).toFixed(1) + 'px;' +
+        'left:' + (cc * step).toFixed(1) + 'px;top:' + (rr * (s + 2)).toFixed(1) + 'px;' +
+        'z-index:' + (10 + d) + ';transform:rotate(' + rot + 'deg)">' + dieFaceCells(ci + 1) + '</span>';
+    }
+    const col = Math.floor(gi / lay.rows), row = gi % lay.rows;
+    const gx0 = PAD_INSET + col * (lay.cellW + GX);
+    const gy0 = PAD_INSET + row * (lay.cellH + GY) + Math.max(0, (lay.cellH - stackH) / 2);
+    html += '<span class="mgroup' + (countFreq[n] >= 2 ? ' tie' : '') + '" style="' +
+      'left:' + gx0.toFixed(1) + 'px;top:' + gy0.toFixed(1) + 'px;' +
+      'height:' + stackH.toFixed(1) + 'px">' +
+      '<span class="mstack" style="width:' + stackW.toFixed(1) + 'px;height:' + stackH.toFixed(1) + 'px">' +
+      dice + '</span>' +
+      '<span class="mcount" style="background:' + pl.color.hex + ';font-size:' + fs + 'px;' +
+      'padding:' + (fs * 0.2).toFixed(1) + 'px ' + (fs * 0.42).toFixed(1) + 'px;margin-left:3px">×' + n +
+      '</span></span>';
+  });
+  pad.innerHTML = html;
+}
+
+function renderCasinos() {
+  const signH = layout.signH;
+  const chrome = 20 + signH + 7 + 5;   // 타일 패딩(20) + 간판 + 간판 아래 여백(7) + 패드 위 여백(5)
+  game.casinos.forEach((cas, ci) => {
+    const tile = document.getElementById('tile' + (ci + 1));
+    tile.classList.toggle('selected', game.selectedFace === ci + 1);
+
+    // 간판: 카지노 상징 + 큰 주사위 눈
+    const iconH = Math.max(16, Math.round(signH * 0.72));
+    const embH = Math.max(12, Math.round(signH * 0.52));
+    let html = '<div class="tileSign" style="height:' + signH + 'px">' +
+      '<svg class="emb" viewBox="0 0 24 24" style="width:' + embH + 'px;height:' + embH + 'px">' +
+      '<use href="#em' + (ci + 1) + '"/></svg>' +
+      '<span class="dieIcon" style="width:' + iconH + 'px;height:' + iconH + 'px">' +
+      dieFaceCells(ci + 1) + '</span></div>';
+
+    // 지폐 거치대: 계단식으로 어긋나게 겹쳐 모든 장의 액면 숫자가 드러나게 한다.
+    // 가로로 34%씩 밀면 아래 장의 왼쪽 큰 액면 숫자(폭의 12~29% 구간)가 항상 노출된다.
+    const nB = cas.bills.length;
+    const SX = 0.34, SY = 0.14;
+    // 남는 세로 공간을 지폐 거치대와 주사위 패드가 나눠 갖는다.
+    // 주사위 색 묶음이 많을수록 패드 몫을 늘려서 알을 전부 담아도 스크롤이 생기지 않게 한다.
+    const nG = Object.values(cas.dice).filter(n => n > 0).length;
+    const padShare = nG <= 2 ? 0.44 : (nG <= 4 ? 0.56 : 0.68);
+    const flexH = Math.max(52, tile.clientHeight - chrome);
+    const availH = flexH - Math.max(32, Math.round(flexH * padShare));
+    const innerW = Math.max(60, tile.clientWidth - 20);
+    const bw = Math.max(30, Math.min(150,
+      Math.floor(innerW / (1 + SX * (nB - 1))),
+      Math.floor(availH * 2.3 / (1 + SY * (nB - 1)))));
+    const bh = Math.round(bw / 2.3);
+    const dx = bw * SX, dy = bh * SY;
+    html += '<div class="tileRack" style="width:' + (nB ? (bw + dx * (nB - 1)).toFixed(1) : 0) + 'px;' +
+      'height:' + (nB ? (bh + dy * (nB - 1)).toFixed(1) : 0) + 'px">' +
+      cas.bills.map((v, bi) => billHTML(v, '',
+        'position:absolute;left:' + (bi * dx).toFixed(1) + 'px;top:' + (bi * dy).toFixed(1) + 'px;' +
+        'width:' + bw + 'px;height:' + bh + 'px;z-index:' + bi)).join('') +
+      '</div>';
+
+    html += '<div class="tilePad"></div>';
+    tile.innerHTML = html;
+    // 패드는 실측 후 채운다 — 남은 공간에 맞춰 주사위를 자동 축소해야 하므로
+    fillPad(tile.querySelector('.tilePad'), cas, ci);
+  });
+}
+
+function updateHintAndButtons() {
+  const rollBtn = document.getElementById('rollBtn');
+  const confirmBtn = document.getElementById('confirmBtn');
+  const hint = document.getElementById('hint');
+
+  rollBtn.disabled = game.finished || game.rolled !== null;
+  confirmBtn.disabled = game.finished || game.selectedFace === null;
+
+  if (game.finished) hint.textContent = '';
+  else if (!game.rolled) hint.textContent = game.players[game.turn].name + ' — 굴리기를 누르세요';
+  else if (anim.active && !anim.grouped) hint.textContent = '';
+  else if (game.selectedFace === null) hint.textContent = '나온 눈 중 하나를 선택하세요';
+  else hint.textContent = '카지노 ' + game.selectedFace + '에 ' + game.rolled[game.selectedFace] + '개 — 확정';
+  hint.style.display = hint.textContent ? '' : 'none';
+}
+
+function renderBottom() {
+  if (!game.rolled) {
+    clearAnimTimers();
+    anim.active = false; anim.grouped = false;
+    document.querySelectorAll('#diceLayer .die3d, #throwZone .grpHit').forEach(e => e.remove());
+  }
+  updateHintAndButtons();
+}
+
+function renderAll() {
+  renderCorner();
+  renderSeats();      // 좌석을 먼저 그려야 좌석띠 깊이를 실측할 수 있다
+  computeLayout();    // 남은 중앙 영역에 맞춰 카지노 묶음 크기·위치 결정
+  renderCasinos();    // 확정된 타일 치수 안에서 내용 배치
+  renderBottom();
+}
+
+/* 창 크기(주소창 등장·회전 포함)가 바뀌면 전부 다시 계산한다 */
+let relayoutRaf = null;
+function onViewportChange() {
+  if (!document.getElementById('gameScreen').classList.contains('on')) return;
+  if (relayoutRaf) cancelAnimationFrame(relayoutRaf);
+  relayoutRaf = requestAnimationFrame(() => {
+    relayoutRaf = null;
+    const rolling = anim.active && !anim.grouped;
+    const grouped = anim.active && anim.grouped;
+    renderCorner();
+    renderSeats();
+    computeLayout(true);   // 화면이 바뀌었을 때만 판을 다시 잡는다
+    renderCasinos();
+    if (rolling) finishRollAnimation(false);   // 굴리는 중이었다면 즉시 결과 상태로
+    else if (grouped) placeGroups(false);      // 이미 모아둔 상태면 새 좌표로 고쳐 잡는다
+    updateHintAndButtons();
+  });
+}
+window.addEventListener('resize', onViewportChange);
+window.addEventListener('orientationchange', onViewportChange);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', onViewportChange);
+
+/* ===== 주사위 던지기 연출 (확정된 결과의 포장) ===== */
+const anim = { active:false, grouped:false, timers:[], raf:null, dice:[], faces:[], size:52, x0:104, skipHandler:null };
+
+function clearAnimTimers() {
+  anim.timers.forEach(t => clearTimeout(t));
+  anim.timers = [];
+  if (anim.raf) { cancelAnimationFrame(anim.raf); anim.raf = null; }
+  if (anim.skipHandler) {
+    document.removeEventListener('pointerdown', anim.skipHandler, true);
+    anim.skipHandler = null;
+  }
+}
+
+function setDieAt(d, x, y, rot, sc) {
+  d.el.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px) rotate(' +
+    rot.toFixed(1) + 'deg)' + (sc && sc !== 1 ? ' scale(' + sc.toFixed(3) + ')' : '');
+}
+
+function startRollAnimation(faces) {
+  clearAnimTimers();
+  anim.active = true; anim.grouped = false; anim.faces = faces;
+  renderSeats(); // 던지는 동안 좌석의 손 주사위가 비워진 모습
+  updateHintAndButtons();
+
+  // 주사위는 판 바깥의 독립 계층에서 움직인다 → 어떤 좌표도 배치에 영향을 주지 않는다
+  const layerEl = document.getElementById('diceLayer');
+  layerEl.innerHTML = '';
+  const tz = document.getElementById('throwZone');
+  tz.querySelectorAll('.grpHit').forEach(e => e.remove());
+  const R = tz.getBoundingClientRect();          // 모으는 자리 (읽기 좋은 중앙)
+  const F = layout.field ||                      // 구르는 범위 = 좌석띠를 뺀 테이블 전역
+    { x: R.left, y: R.top, w: R.width, h: R.height };
+  const X0 = R.left + (document.getElementById('roundCorner').offsetWidth || 86) + 18;
+  anim.x0 = X0;
+  const size = Math.max(26, Math.min(52,
+    Math.floor((R.right - X0 - 24) / Math.max(4, faces.length)) - 6,
+    Math.floor(R.height * 0.54)));
+  anim.size = size;
+  const hex = game.players[game.turn].color.hex;
+  const seat = tableGeo.seats[game.turn] || { x: F.x + F.w / 2, y: F.y + F.h + 200 };
+  const sx = seat.x - size / 2, sy = seat.y - size / 2;   // 전부 화면 좌표계
+  const now = performance.now();
+  const minX = F.x + 4, maxX = F.x + F.w - size - 4;
+  const minY = F.y + 4, maxY = F.y + F.h - size - 4;
+
+  anim.dice = faces.map((f, i) => {
+    const el = document.createElement('div');
+    el.className = 'die3d tumb';
+    el.style.cssText = diceBodyStyle(hex) + ';width:' + size + 'px;height:' + size + 'px;padding:' + Math.round(size * 0.16) + 'px;';
+    el.innerHTML = dieFaceCells(1 + Math.floor(Math.random() * 6)); // 시각용 임시 눈
+    layerEl.appendChild(el);
+    // 멈추는 자리는 테이블 전역 아무 데나 (카지노 타일 위여도 상관없다)
+    const tx = minX + Math.random() * Math.max(10, maxX - minX);
+    const ty = minY + Math.random() * Math.max(10, maxY - minY);
+    const s0x = sx + (Math.random() * 54 - 27), s0y = sy + (Math.random() * 36 - 18);
+    // 절반쯤은 목표를 지나쳐 벽에 부딪혔다가 튕겨 들어온다
+    let p1 = null;
+    if (Math.random() < 0.5) {
+      const vx = tx - s0x, vy = ty - s0y, len = Math.hypot(vx, vy) || 1;
+      const over = 70 + Math.random() * 160;
+      const qx = tx + vx / len * over, qy = ty + vy / len * over;
+      const cx = Math.min(Math.max(qx, minX), maxX), cy = Math.min(Math.max(qy, minY), maxY);
+      if (Math.abs(cx - qx) > 10 || Math.abs(cy - qy) > 10) p1 = { x: cx, y: cy };  // 실제로 벽에 닿았을 때만
+    }
+    const d = {
+      el, face: f, locked: false, lastFace: 0,
+      // 손에서 떠나는 지점·시각·속도·거리가 알마다 다르다 (똑같이 움직이면 가짜로 보인다)
+      sx: s0x, sy: s0y, tx, ty, p1,
+      t0: now + i * 26,
+      dur: 660 + Math.random() * 320,
+      land: 0.62 + Math.random() * 0.08,          // 이 시점에 바닥에 닿는다
+      arc: 40 + Math.random() * 54,               // 던진 방향으로 솟는 포물선 높이
+      bounce: size * (0.20 + Math.random() * 0.18),
+      spin: (Math.random() < 0.5 ? -1 : 1) * (460 + Math.random() * 420),
+      rotEnd: Math.random() * 26 - 13,            // 각자 다른 최종 각도 (삐뚤빼뚤)
+    };
+    setDieAt(d, d.sx, d.sy, d.rotEnd + d.spin, 1);
+    return d;
+  });
+
+  const endAt = Math.max(...anim.dice.map(d => d.t0 + d.dur));
+  anim.raf = requestAnimationFrame(stepRoll);
+  anim.timers.push(setTimeout(() => finishRollAnimation(true), Math.max(120, endAt - now + 80)));
+
+  // 연출 중 아무 곳 탭 → 즉시 완료 상태로 스킵
+  anim.skipHandler = (e) => {
+    if (anim.grouped) return;
+    e.preventDefault();
+    e.stopPropagation();
+    finishRollAnimation(false);
+  };
+  document.addEventListener('pointerdown', anim.skipHandler, true);
+}
+
+const easeThrow = t => 1 - Math.pow(1 - t, 2.6);   // 던진 직후 빠르고 끝에서 잦아든다
+
+function stepRoll(now) {
+  anim.raf = null;
+  if (anim.grouped) return;
+  for (const d of anim.dice) {
+    const t = Math.max(0, Math.min(1, (now - d.t0) / d.dur));
+    const e = easeThrow(t);
+    let x, y;
+    if (!d.p1) {                       // 곧장 굴러가 멈춘다
+      x = d.sx + (d.tx - d.sx) * e;
+      y = d.sy + (d.ty - d.sy) * e;
+    } else if (e < 0.64) {             // 벽까지 밀고 갔다가
+      const u = e / 0.64;
+      x = d.sx + (d.p1.x - d.sx) * u;
+      y = d.sy + (d.p1.y - d.sy) * u;
+    } else {                           // 튕겨 되돌아와 멈춘다
+      const u = (e - 0.64) / 0.36;
+      x = d.p1.x + (d.tx - d.p1.x) * u;
+      y = d.p1.y + (d.ty - d.p1.y) * u;
+    }
+    let sc = 1;
+    if (t < d.land) {
+      y -= d.arc * Math.sin(Math.PI * (t / d.land));            // 날아가는 포물선
+    } else {
+      const b = (t - d.land) / (1 - d.land);                     // 착지 후 두 번 튀기
+      const damp = 1 - b;
+      y -= d.bounce * Math.abs(Math.sin(Math.PI * b * 2)) * damp;
+      sc = 1 + 0.07 * Math.sin(Math.PI * b * 2) * damp;          // 닿는 순간 살짝 눌림
+    }
+    setDieAt(d, x, y, d.rotEnd + d.spin * (1 - e), sc);
+    if (t < d.land) {                                            // 구르는 동안 눈이 계속 바뀐다
+      if (now - d.lastFace > 46) { d.el.innerHTML = dieFaceCells(1 + Math.floor(Math.random() * 6)); d.lastFace = now; }
+    } else if (!d.locked) {
+      d.locked = true;
+      d.el.innerHTML = dieFaceCells(d.face);
+      d.el.classList.remove('tumb');                             // 그림자가 바닥에 안착
+    }
+  }
+  anim.raf = requestAnimationFrame(stepRoll);
+}
+
+function finishRollAnimation(animate) {
+  if (anim.grouped) return;
+  clearAnimTimers();
+  anim.grouped = true;
+  anim.dice.forEach(d => {
+    d.locked = true;
+    d.el.innerHTML = dieFaceCells(d.face);
+    d.el.classList.remove('tumb');
+  });
+  placeGroups(animate);
+  updateHintAndButtons();
+}
+
+// 같은 눈끼리 모아 세우기 (창 크기가 바뀌면 다시 불러 위치를 고쳐 잡는다)
+function placeGroups(animate) {
+  const tz = document.getElementById('throwZone');
+  tz.querySelectorAll('.grpHit').forEach(e => e.remove());
+  const R = tz.getBoundingClientRect();          // 화면 좌표 (주사위 계층과 같은 좌표계)
+  const X0 = R.left + (document.getElementById('roundCorner').offsetWidth || 86) + 18;
+  anim.x0 = X0;
+  const size = anim.size;
+  const faces = [...new Set(anim.faces)].sort((a, b) => a - b); // 눈 오름차순
+  const slotW = Math.max(size + 20, (R.right - X0) / faces.length);
+  const plan = [];
+
+  faces.forEach((f, gi) => {
+    const members = anim.dice.filter(d => d.face === f);
+    const n = members.length;
+    const off = n > 1
+      ? Math.max(size * 0.18, Math.min(size * 0.52, (slotW - size - 20) / (n - 1)))
+      : 0;
+    const x0 = X0 + gi * slotW + (slotW - (size + off * (n - 1))) / 2;
+    // 타일을 가리지 않도록 던지기존 안쪽으로 모은다
+    const y0 = R.top + Math.max(2, (R.height - size) / 2 - 6);
+    // 모아둔 뒤에도 알마다 각도를 조금씩 달리해 기계적으로 줄 세운 느낌을 없앤다
+    members.forEach((d, mi) => plan.push({ d, x: x0 + mi * off, y: y0, rot: (mi % 2 ? 6 : -5) + d.rotEnd * 0.25 }));
+
+    const hit = document.createElement('button');
+    hit.className = 'grpHit';
+    hit.dataset.face = f;
+    hit.style.left = (X0 - R.left + gi * slotW + 3) + 'px';   // 히트 영역은 던지기존 기준
+    hit.style.width = (slotW - 6) + 'px';
+    hit.innerHTML = '<span class="grpBadge">' + f + ' 눈 ×' + game.rolled[f] + '</span>';
+    hit.addEventListener('click', () => selectFace(f));
+    if (game.selectedFace === f) hit.classList.add('sel');
+    tz.appendChild(hit);
+  });
+
+  // 전환 클래스를 먼저 확정하고 리플로우를 강제한 뒤 좌표를 준다 → 전환이 확실히 걸린다
+  plan.forEach(p => p.d.el.classList.toggle('grouping', !!animate));
+  void tz.offsetWidth;
+  plan.forEach(p => setDieAt(p.d, p.x, p.y, p.rot, 1));
+}
+
+function selectFace(f) {
+  game.selectedFace = f;   // 확정 전 재탭으로 변경 가능
+  renderCasinos();
+  document.querySelectorAll('.grpHit').forEach(h => h.classList.toggle('sel', +h.dataset.face === f));
+  updateHintAndButtons();
+}
+
+// 확정 시: 선택한 눈의 주사위알들이 카지노 타일로 미끄러져 들어가는 연출 (클론)
+function flyDiceToCasino(f) {
+  const tile = document.getElementById('tile' + f);
+  if (!tile || !anim.dice.length) return;
+  const tR = tile.getBoundingClientRect();
+  anim.dice.filter(d => d.face === f).forEach((d, i) => {
+    const r = d.el.getBoundingClientRect();
+    const c = d.el.cloneNode(true);
+    c.style.cssText = d.el.style.cssText;
+    c.style.position = 'fixed';
+    c.style.left = r.left + 'px';
+    c.style.top = r.top + 'px';
+    c.style.zIndex = 90;
+    c.style.transition = 'left .4s ease-in, top .4s ease-in, width .4s ease-in, height .4s ease-in, opacity .4s ease-in';
+    document.body.appendChild(c);
+    requestAnimationFrame(() => {
+      c.style.left = (tR.left + tR.width / 2 - 10 + (i % 3) * 8) + 'px';
+      c.style.top = (tR.top + tR.height * 0.6 + (i % 2) * 8) + 'px';
+      c.style.width = c.style.height = '20px';
+      c.style.opacity = '.85';
+    });
+    setTimeout(() => c.remove(), 430);
+  });
+}
+
+/* ===== 턴 로직 ===== */
+document.getElementById('rollBtn').addEventListener('click', () => {
+  if (game.finished || game.rolled) return;
+  const p = game.players[game.turn];
+  const faces = [];
+  const counts = {};
+  for (let i = 0; i < p.diceLeft; i++) {
+    const f = 1 + Math.floor(Math.random() * 6);
+    faces.push(f);
+    counts[f] = (counts[f] || 0) + 1;
+  }
+  game.rolled = counts;      // 결과를 연출 시작 전에 확정
+  game.selectedFace = null;
+  startRollAnimation(faces);
+});
+
+document.getElementById('confirmBtn').addEventListener('click', () => {
+  if (game.finished || game.selectedFace === null) return;
+  flyDiceToCasino(game.selectedFace); // 연출 (확정된 결과의 포장)
+  const f = game.selectedFace;
+  const n = game.rolled[f];
+  const p = game.players[game.turn];
+
+  // 그 눈이 나온 주사위 전부 배치 (일부만 배치 불가)
+  const cas = game.casinos[f - 1];
+  cas.dice[game.turn] = (cas.dice[game.turn] || 0) + n;
+  p.diceLeft -= n;
+
+  game.rolled = null;
+  game.selectedFace = null;
+  advanceTurn();
+  renderAll();
+});
+
+function advanceTurn() {
+  for (let step = 1; step <= game.players.length; step++) {
+    const idx = (game.turn + step) % game.players.length;
+    if (game.players[idx].diceLeft > 0) {
+      game.turn = idx;
+      return;
+    }
+  }
+  game.finished = true;
+  startSettlement();
+}
+
+/* ===== 라운드 시작: 지폐 분배 연출 (탭으로 스킵) ===== */
+const dealAnim = { timers: [], skip: null };
+
+function clearDealAnim() {
+  dealAnim.timers.forEach(t => clearTimeout(t));
+  dealAnim.timers = [];
+  if (dealAnim.skip) { document.removeEventListener('pointerdown', dealAnim.skip, true); dealAnim.skip = null; }
+}
+
+/* 카지노 1번부터 순서대로, 한 장씩 더미에서 날아와 뒤집히며 액면이 드러난다.
+   같은 카지노에 두 번째 장이 더 깔릴 때는 살짝 뜸을 들여 "$50,000을 넘겨야 멈춘다"는 긴장을 보여준다. */
+function startDealAnimation() {
+  clearDealAnim();
+  const targets = [];
+  for (let ci = 1; ci <= 6; ci++) {
+    document.querySelectorAll('#tile' + ci + ' .tileRack .vbill')
+      .forEach((el, k) => targets.push({ el, ci, k }));
+  }
+  if (!targets.length) return;
+  targets.forEach(t => { t.el.style.visibility = 'hidden'; });
+  const deckR = document.getElementById('deckStack').getBoundingClientRect();
+  const clones = [];
+  let ended = false;
+  const finish = () => {
+    if (ended) return;
+    ended = true;
+    clearDealAnim();
+    clones.forEach(c => c.remove());
+    clones.length = 0;
+    targets.forEach(t => { t.el.style.visibility = ''; });
+  };
+  dealAnim.skip = (e) => { e.preventDefault(); e.stopPropagation(); finish(); };
+  document.addEventListener('pointerdown', dealAnim.skip, true);
+
+  const FLY = 300, STEP = 160, EXTRA = 80;
+  let at = 0;
+  targets.forEach(t => {
+    if (t.k > 0) at += EXTRA;                    // 같은 카지노의 추가 장은 한 박자 늦게
+    const delay = at;
+    at += STEP;
+    dealAnim.timers.push(setTimeout(() => {
+      if (ended) return;
+      const r = t.el.getBoundingClientRect();
+      const v = game.casinos[t.ci - 1].bills[t.k];
+      if (v === undefined) { t.el.style.visibility = ''; return; }
+      const outer = document.createElement('div');
+      outer.style.cssText = 'position:fixed;z-index:85;pointer-events:none;perspective:700px;' +
+        'left:' + deckR.left + 'px;top:' + deckR.top + 'px;' +
+        'width:' + r.width + 'px;height:' + r.height + 'px;' +
+        'transition:left ' + FLY + 'ms cubic-bezier(.3,.75,.35,1), top ' + FLY + 'ms cubic-bezier(.3,.75,.35,1);';
+      const inner = document.createElement('div');
+      inner.style.cssText = 'position:relative;width:100%;height:100%;transform-style:preserve-3d;' +
+        'transition:transform ' + FLY + 'ms ease-in-out;';
+      const faceStyle = 'position:absolute;left:0;top:0;width:100%;height:100%;' +
+        '-webkit-backface-visibility:hidden;backface-visibility:hidden;';
+      inner.innerHTML = billBackHTML(faceStyle) + billHTML(v, '', faceStyle + 'transform:rotateY(180deg);');
+      outer.appendChild(inner);
+      document.body.appendChild(outer);
+      clones.push(outer);
+      requestAnimationFrame(() => {
+        outer.style.left = r.left + 'px';
+        outer.style.top = r.top + 'px';
+        inner.style.transform = 'rotateY(180deg)';   // 날아가면서 뒷면 → 앞면
+      });
+      dealAnim.timers.push(setTimeout(() => {
+        const i = clones.indexOf(outer);
+        if (i >= 0) clones.splice(i, 1);
+        outer.remove();
+        t.el.style.visibility = '';
+      }, FLY + 20));
+    }, delay));
+  });
+  dealAnim.timers.push(setTimeout(finish, at + FLY + 120));
+}
+
+/* ===== 정산에서 지폐가 좌석으로 날아가는 연출 ===== */
+function flyBillToSeat(v, pi) {
+  const seat = tableGeo.seats[pi];
+  if (!seat) return;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = billHTML(v);
+  const b = wrap.firstChild;
+  b.style.cssText += ';position:fixed;left:' + (window.innerWidth / 2 - 64) + 'px;top:' +
+    (window.innerHeight / 2 - 96) + 'px;width:128px;height:56px;z-index:120;' +
+    'transition:left .6s ease-in, top .6s ease-in, opacity .6s ease-in;';
+  document.body.appendChild(b);
+  requestAnimationFrame(() => {
+    b.style.left = (seat.x - 64) + 'px';
+    b.style.top = (seat.y - 40) + 'px';
+    b.style.opacity = '0';
+  });
+  setTimeout(() => b.remove(), 660);
+}
+
+/* ===== 정산 ===== */
+function startSettlement() {
+  game.settle = { idx: 0 };
+  showSettleCasino();
+}
+
+// 카지노 하나를 실제 정산 (상쇄 → 정렬 → 지급 → 남은 지폐 더미 맨 밑)
+function settleCasino(ci) {
+  const cas = game.casinos[ci];
+  const billsShown = [...cas.bills];
+
+  const entries = Object.entries(cas.dice).map(([pi, n]) => [Number(pi), n]);
+  // a. 동점 상쇄: 개수가 같은 플레이어들은 순위 무관 전원 탈락
+  const freq = {};
+  entries.forEach(([, n]) => { freq[n] = (freq[n] || 0) + 1; });
+  const eliminated = entries.filter(([, n]) => freq[n] >= 2);
+  // b. 남은 플레이어 내림차순 정렬, 1등부터 최고액 지폐부터 한 장씩
+  const remaining = entries.filter(([, n]) => freq[n] < 2).sort((a, b) => b[1] - a[1]);
+  const sortedBills = [...cas.bills].sort((a, b) => b - a);
+  const payouts = []; // {pi, n, bill|null}  (c. 지폐가 모자라면 뒷순위는 빈손)
+  remaining.forEach(([pi, n], rank) => {
+    const bill = rank < sortedBills.length ? sortedBills[rank] : null;
+    if (bill !== null) game.players[pi].bills.push(bill);
+    payouts.push({ pi, n, bill });
+  });
+  // d. 남은 지폐는 순서대로 더미 맨 밑으로
+  const leftover = sortedBills.slice(payouts.length);
+  game.deck.push(...leftover);
+  // e. 주사위 전부 제거
+  cas.dice = {};
+  cas.bills = [];
+
+  return { billsShown, eliminated, payouts, leftover };
+}
+
+function showSettleCasino() {
+  const ci = game.settle.idx;
+  const r = settleCasino(ci);
+  renderAll();
+
+  let html = '<h2 class="goldText">정산 — 카지노 ' + (ci + 1) + '</h2>';
+  html += '<div class="settleBills">' +
+    r.billsShown.map(v => billHTML(v)).join('') +
+    (r.billsShown.length ? '' : '<div class="leftNote">걸린 지폐 없음</div>') +
+    '</div>';
+
+  if (r.eliminated.length) {
+    html += '<div class="tieBox"><div class="tieTitle">동점 상쇄!</div>' +
+      r.eliminated.map(([pi, n]) => {
+        const pl = game.players[pi];
+        return '<span style="color:' + pl.color.hex + ';font-weight:800">' + pl.name + '</span> ×' + n;
+      }).join(' · ') + '</div>';
+  }
+
+  if (r.payouts.length) {
+    r.payouts.forEach(p => {
+      const pl = game.players[p.pi];
+      html += '<div class="payRow"><span class="colorDot" style="background:' + pl.color.hex + '"></span>' +
+        pl.name + ' ×' + p.n +
+        (p.bill !== null
+          ? '<span class="amount">' + money(p.bill) + ' 획득</span>'
+          : '<span class="amount none">빈손</span>') +
+        '</div>';
+    });
+  } else {
+    html += '<div class="leftNote">받는 사람 없음' + (r.eliminated.length ? ' (전원 상쇄)' : '') + '</div>';
+  }
+
+  if (r.leftover.length) {
+    html += '<div class="leftNote">남은 지폐 ' + r.leftover.map(money).join(', ') + ' → 더미 맨 밑으로</div>';
+  }
+
+  html += '<button id="settleNextBtn">다음 카지노</button>';
+  const panel = document.getElementById('settlePanel');
+  panel.innerHTML = html;
+  document.getElementById('settleNextBtn').addEventListener('click', () => {
+    game.settle.idx++;
+    if (game.settle.idx >= 6) showSettleDone();
+    else showSettleCasino();
+  });
+  document.getElementById('settleOverlay').classList.add('on');
+
+  // 연출: 받은 지폐가 해당 좌석 방향으로 날아가고, 도착하면 그 액면 묶음이 반짝이며 갱신
+  r.payouts.forEach((p, i) => {
+    if (p.bill === null) return;
+    setTimeout(() => flyBillToSeat(p.bill, p.pi), 280 + i * 200);
+    setTimeout(() => flashSeatGain(p.pi, p.bill), 280 + i * 200 + 600);
+  });
+}
+
+function showSettleDone() {
+  renderAll();
+  // 파산 라운드는 최종 라운드: 남은 라운드가 있어도 우승 판정으로 간다
+  if (game.currentRound < game.roundsTotal && !game.bankrupt) {
+    const next = game.currentRound + 1;
+    const panel = document.getElementById('settlePanel');
+    panel.innerHTML = '<div class="settleDoneMsg goldText">정산 완료</div>' +
+      '<button id="nextRoundBtn">' + next + '라운드 시작</button>';
+    document.getElementById('nextRoundBtn').addEventListener('click', () => {
+      // 전원 주사위 8개 복구 → 선 교대 → 라운드 +1 → 기존 더미에서 재충전 → 게임판 복귀
+      game.players.forEach(p => { p.diceLeft = DICE_PER_PLAYER; });
+      game.starter = (game.starter + 1) % game.players.length;
+      game.currentRound++;
+      document.getElementById('settleOverlay').classList.remove('on');
+      startRound();
+    });
+  } else {
+    showWinners();
+  }
+}
+
+/* ===== 우승 판정 ===== */
+function showWinners() {
+  // 총액 내림차순 → 같으면 지폐 장수 → 그것도 같으면 공동 순위 (총액은 게임 내내 공개 상태)
+  const rows = game.players
+    .map(p => ({
+      name: p.name, hex: p.color.hex,
+      total: p.bills.reduce((s, v) => s + v, 0),
+      count: p.bills.length,
+      bills: p.bills.slice(),
+    }))
+    .sort((a, b) => (b.total - a.total) || (b.count - a.count));
+
+  let html = '<h2 class="goldText">최종 결과</h2>';
+  let rank = 0;
+  rows.forEach((r, idx) => {
+    const sameAsPrev = idx > 0 && rows[idx - 1].total === r.total && rows[idx - 1].count === r.count;
+    if (!sameAsPrev) rank = idx + 1;
+    const sameAsNext = idx < rows.length - 1 && rows[idx + 1].total === r.total && rows[idx + 1].count === r.count;
+    const shared = sameAsPrev || sameAsNext;
+    html += '<div class="payRow' + (rank === 1 ? ' rank1' : '') + '">' +
+      '<span style="font-size:21px;font-weight:900;min-width:104px;text-align:left;white-space:nowrap;flex:none">' +
+      (rank === 1 ? '👑 ' : '') + (shared ? '공동 ' : '') + rank + '위</span>' +
+      '<span class="colorDot" style="background:' + r.hex + '"></span>' +
+      '<span class="pname">' + r.name + '</span>' +
+      '<span class="miniBills">' + r.bills.map(v => billHTML(v)).join('') + '</span>' +
+      '<span class="amount">' + money(r.total) + ' (' + r.count + '장)</span>' +
+      '</div>';
+  });
+  html += '<button id="againBtn">다시 하기</button>';
+
+  const panel = document.getElementById('settlePanel');
+  panel.innerHTML = html;
+  document.getElementById('againBtn').addEventListener('click', () => {
+    game.players = []; game.deck = []; game.casinos = [];
+    game.currentRound = 1; game.turn = 0; game.rolled = null; game.selectedFace = null;
+    game.finished = false; game.settle = null; game.starter = 0; game.bankrupt = false;
+    dockControls();
+    document.getElementById('settleOverlay').classList.remove('on');
+    document.getElementById('gameScreen').classList.remove('on');
+    document.getElementById('startScreen').style.display = '';
+  });
+  document.getElementById('settleOverlay').classList.add('on');
+}
+
+/* iOS 핀치 줌 방지 */
+document.addEventListener('gesturestart', e => e.preventDefault());
+</script>
+</body>
+</html>
