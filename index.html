@@ -50,45 +50,90 @@
   .dieIcon i { width:68%; height:68%; place-self:center; border-radius:50%; }
   .dieIcon i.on { background:#2a2e38; box-shadow: inset 0 1px 1px rgba(0,0,0,.6); }
 
-  /* ===== 실물 주사위 (몸통 = 플레이어 색, 눈 = 흰색 파임) ===== */
-  .die3d {
-    position:absolute; left:0; top:0; border-radius:18%;
-    box-shadow:
-      inset 0 3px 4px rgba(255,255,255,.5),
-      inset 0 -5px 8px rgba(0,0,0,.4),
-      inset -3px 0 5px rgba(0,0,0,.14),
-      0 10px 14px -5px rgba(0,0,0,.65);
+  /* ===== 색 주사위 한 알의 겉모습 — 공용 표현 (여기 한 곳만 고치면 전부 같이 바뀐다) =====
+     기준은 좌석·카지노 타일에 놓인 대기 주사위(.mdie)다. 굴리는 정육면체의 여섯 면(.cubeFace)과
+     타일로 날아 들어가는 알(.die3d)이 이 규칙을 그대로 쓴다 → 굴리는 중·멈춘 뒤·날아갈 때가
+     모두 같은 주사위로 보인다. 몸통색은 diceBodyStyle()이 인라인으로 넣고,
+     크기와 padding(한 변의 15%)은 쓰는 쪽이 정한다. */
+  :root { --dieInset: inset 0 1px 2px rgba(255,255,255,.5), inset 0 -2px 3px rgba(0,0,0,.4); }
+  .dieSkin {
+    border-radius:22%;
     display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    box-shadow: var(--dieInset), var(--dieDrop, 0 2px 4px rgba(0,0,0,.55));
+  }
+  .dieSkin > i { width:72%; height:72%; place-self:center; border-radius:50%; }
+  .dieSkin > i.on { background:#f6f3e8; box-shadow: inset 0 1px 1px rgba(0,0,0,.45); }
+
+  /* 확정 후 카지노 타일로 날아 들어가는 알 — 겉모습은 .dieSkin 그대로, 들린 느낌만 더한다 */
+  .die3d {
+    position:absolute; left:0; top:0;
     pointer-events:none; z-index:30;
+    filter: drop-shadow(0 8px 10px rgba(0,0,0,.6));
     will-change:transform; transition:none;   /* 굴리는 동안은 JS가 매 프레임 직접 그린다 */
   }
-  .die3d::before { /* 윗면 광택 */
-    content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
-    background:linear-gradient(180deg, rgba(255,255,255,.34), transparent 44%);
+
+  /* ===== 굴리는 중의 주사위 = 진짜 정육면체 (CSS 3D, 6면) =====
+     바깥틀(.dieCube)이 원근과 위치·크기를 맡고, 안틀(.cubeInner)이 preserve-3d로
+     여섯 면을 실제 상자로 세운다. 면이 여섯 장이라 어느 각도에서도 덩어리가 남는다
+     → 무제한으로 굴려도 납작해지거나 사라지지 않는다. */
+  .dieCube { position:absolute; left:0; top:0; pointer-events:none; z-index:30; will-change:transform; }
+  .cubeInner {
+    position:relative; width:100%; height:100%;
+    transform-style:preserve-3d; will-change:transform;
   }
-  .die3d i { width:66%; height:66%; place-self:center; border-radius:50%; }
-  .die3d i.on { /* 흰 눈, 얕게 파인 느낌 */
-    background:#f6f3e8;
-    box-shadow: inset 0 2px 3px rgba(0,0,0,.5), inset 0 -1px 1px rgba(255,255,255,.55);
+  /* 여섯 면은 대기 주사위와 똑같은 겉모습(.dieSkin)에 자리만 잡아준다.
+     바닥 그림자(.dieShadow)가 따로 있으니 면 자신의 접지 그림자는 끈다 */
+  .cubeFace {
+    position:absolute; inset:0; padding:15%;
+    --dieDrop: 0 0 transparent;
+    backface-visibility:hidden;     /* 뒤돌아선 면은 아예 그리지 않는다 (눈이 비쳐 보이는 것 방지) */
   }
-  /* 구르는 동안: 잔상 + 공중에 뜬 그림자. 착지하면 클래스가 빠지며 그림자가 바닥에 안착한다 */
-  .die3d.tumb { filter: blur(.45px) drop-shadow(0 12px 8px rgba(0,0,0,.42)); }
-  /* 같은 눈끼리 모이는 이동은 전환으로 부드럽게 (툭 순간이동 금지) */
-  .die3d.grouping { transition: transform .4s cubic-bezier(.25,.9,.3,1); }
+  /* 모서리를 둥글리면 면의 네 귀퉁이가 잘려 상자 꼭짓점에 구멍이 난다 → 배경이 비친다.
+     그래서 같은 색의 속상자를 안쪽에 겹쳐 넣어 그 구멍을 메운다. 눈은 없다.
+     핵심: 속상자가 겉면보다 덜 둥글면(각진 귀퉁이) 겉면의 둥근 윤곽 밖으로 귀가 뾰족하게 삐친다.
+     → 속상자를 겉면과 똑같은 크기·똑같은 22% 라운드로 두고 깊이만 다르게 겹친다.
+     윤곽이 같으니 어느 각도에서도 겉면 밖으로 나올 수 없다(= 뾰족한 귀가 원리상 안 생긴다).
+     대신 둥근 귀퉁이의 반지름(한 변의 22% = --h의 0.44배)만큼 뒤까지 겹을 깔아
+     꼭짓점을 스쳐 지나는 시선이 반드시 어느 한 겹에 막히게 한다(= 구멍도 안 생긴다). */
+  .cubeCore {
+    position:absolute; inset:0; border-radius:22%; backface-visibility:hidden;
+    box-shadow: var(--dieInset);   /* 귀퉁이로 보이는 속살도 면과 같은 음영을 받는다 */
+  }
+  /* 여섯 면의 자리. 면마다의 명암 차이는 두지 않는다 — 어두운 면이 정면에 올 때
+     주사위가 탁해 보이기 때문. 어느 각도에서도 대기 주사위와 같은 색이어야 한다.
+     --h = 한 변의 절반(= 알 한 변의 절반이라 두께가 크기에 맞는다). JS가 인라인으로 넣는다.
+     마주보는 면의 합은 7 (앞1·뒤6, 오3·왼4, 위2·아래5) — 실물 주사위 규칙 */
+  .cubeFace, .cubeCore { --fz: var(--h); }
+  .cubeCore.c1 { --fz: calc(var(--h) * 0.78); }   /* 귀퉁이 반지름의 절반만큼 뒤 */
+  .cubeCore.c2 { --fz: calc(var(--h) * 0.56); }   /* = --h - 0.44*--h, 둥근 귀퉁이가 끝나는 깊이 */
+  .cf-front  { transform: translateZ(var(--fz)); }
+  .cf-back   { transform: rotateY(180deg) translateZ(var(--fz)); }
+  .cf-right  { transform: rotateY(90deg)  translateZ(var(--fz)); }
+  .cf-left   { transform: rotateY(-90deg) translateZ(var(--fz)); }
+  .cf-top    { transform: rotateX(90deg)  translateZ(var(--fz)); }
+  .cf-bottom { transform: rotateX(-90deg) translateZ(var(--fz)); }
+  /* 바닥에 드리우는 실제 그림자 — 주사위와 분리되어 있어야 "떠 있다"가 읽힌다 */
+  .dieShadow {
+    position:absolute; left:0; top:0; border-radius:50%; pointer-events:none; z-index:28;
+    /* 테이블이 거의 검정이라 옅은 그림자는 아예 안 보인다 → 진하게 깔고 가장자리만 부드럽게 */
+    background:radial-gradient(closest-side, rgba(0,0,0,.88), rgba(0,0,0,.5) 56%, transparent 100%);
+    will-change:transform, opacity;
+  }
+  /* 같은 눈끼리 모이는 이동은 전환으로 부드럽게 (툭 순간이동 금지).
+     자리(바깥틀)와 자세(안틀)가 같은 곡선으로 함께 정돈된다 */
+  .dieCube.grouping { transition: transform .4s cubic-bezier(.25,.9,.3,1); }
+  .dieCube.grouping .cubeInner { transition: transform .4s cubic-bezier(.25,.9,.3,1); }
+  .dieShadow.grouping { transition: transform .4s cubic-bezier(.25,.9,.3,1), opacity .4s ease; }
 
   /* ===== 미니 주사위 (타일·좌석) — 크기는 전부 인라인으로 계산해 넣는다 ===== */
   .mgroup { position:absolute; display:flex; align-items:center; white-space:nowrap; }
   .mstack { position:relative; flex:none; }
   .mstack .mdie { position:absolute; }
-  .mdie {
-    position:relative; border-radius:22%; flex:none;
-    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
-    box-shadow: inset 0 1px 2px rgba(255,255,255,.5), inset 0 -2px 3px rgba(0,0,0,.4), 0 2px 4px rgba(0,0,0,.55);
-  }
-  .mdie i { width:72%; height:72%; place-self:center; border-radius:50%; }
-  .mdie i.on { background:#f6f3e8; box-shadow: inset 0 1px 1px rgba(0,0,0,.45); }
+  /* 겉모습(둥글기·음영·눈)은 전부 .dieSkin이 맡는다 — 여기는 자리 잡는 규칙만 */
+  .mdie { position:relative; flex:none; }
   .mcount {
     font-weight:900; color:#fff; border-radius:7px; line-height:1;
+    flex:none; align-self:center; white-space:nowrap;
     box-shadow: 0 1px 3px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.28);
     text-shadow:0 1px 1px rgba(0,0,0,.45);
   }
@@ -169,7 +214,9 @@
     display:flex; flex-direction:column; align-items:stretch; overflow:hidden;
     background:linear-gradient(180deg, #151926 0%, #0d1017 56%, #0a0c12 100%);
     border:1px solid rgba(255,255,255,.07); border-radius:20px;
-    padding:10px;
+    /* 전구 점선 띠는 5~10px 구간을 쓴다 → 내용은 14px부터 시작해 4px 숨통을 남긴다.
+       (JS의 TILE_PAD 상수와 반드시 같은 값이어야 한다) */
+    padding:14px;
     box-shadow:
       0 10px 22px rgba(0,0,0,.6),
       0 0 22px -9px var(--acc),
@@ -200,8 +247,8 @@
   .tile.c5 { --acc:#c3a6ff; --glw:rgba(195,166,255,.5); --sg1:#2c2249; --sg2:#130e21; }
   .tile.c6 { --acc:#ff9fd6; --glw:rgba(255,159,214,.5); --sg1:#3c1d32; --sg2:#190b15; }
   .tileSign { /* 간판 실루엣 (타일별 형태 변화). 높이는 타일 크기에 맞춰 JS가 넣는다 */
-    flex:none; margin-bottom:7px; padding-top:4px;
-    display:flex; align-items:center; justify-content:center; gap:10px;
+    flex:none; margin-bottom:7px; padding:4px 6% 0;
+    display:flex; align-items:center; justify-content:center; gap:8px;
     position:relative; z-index:2;
     background:linear-gradient(180deg, var(--sg1) 0%, var(--sg2) 100%);
     box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
@@ -212,8 +259,12 @@
   .tile.c4 .tileSign { border-radius:50% 50% 6px 6px / 46% 46% 6px 6px; }                  /* 돔 */
   .tile.c5 .tileSign { clip-path:polygon(0 32%, 13% 0, 87% 0, 100% 32%, 100% 100%, 0 100%); } /* 육각 */
   .tile.c6 .tileSign { clip-path:polygon(0 0, 100% 0, 100% 74%, 50% 100%, 0 74%); }        /* 배너 */
-  .tileSign::after { /* 간판 하단 네온 라인 (은은하게, 애니메이션 없음) */
-    content:''; position:absolute; left:17%; right:17%; bottom:5px; height:2px; border-radius:2px;
+  /* 간판 하단 네온 라인 — 절대배치로 깔면 상징·눈 표시 뒤를 가로질러 겹친다.
+     대신 선을 좌우 두 도막으로 끊어 상징 양옆에 흐르는 칸으로 넣는다.
+     칸이 flex:1로 남는 폭만 나눠 가지므로 상징 크기가 어떻든 절대 닿지 않는다. */
+  .signRule {
+    flex:1 1 0; min-width:0; max-width:22%;
+    height:2px; border-radius:2px; align-self:flex-end; margin-bottom:5px;
     background:var(--acc); opacity:.55; box-shadow:0 0 7px var(--glw);
   }
   .tileSign .dieIcon { width:30px; height:30px; }
@@ -223,9 +274,11 @@
   }
   .tilePad { /* 조용한 어두운 단색 트레이 (무늬 없음). 스크롤 절대 없음 */
     position:relative; z-index:2;
-    flex:1 1 0; min-height:28px; margin-top:5px;   /* JS가 잡아두는 패드 최소 몫과 맞춘다 */
-    padding:4px; overflow:hidden;
-    border-radius:13px;
+    /* min-height를 걸면 타일이 낮을 때 세로 묶음이 타일 밖(=전구 띠 위)으로 밀려난다.
+       0으로 두고 남는 만큼만 차지하게 한다 → 넘치는 대신 알이 작아진다. */
+    flex:1 1 0; min-height:0; margin-top:7px;
+    padding:5px; overflow:hidden;                  /* JS의 PAD_INSET 상수와 같은 값 */
+    border-radius:11px;
     background:#07090e;
     box-shadow: inset 0 2px 9px rgba(0,0,0,.85), inset 0 0 0 1px rgba(255,255,255,.045);
   }
@@ -247,7 +300,17 @@
     background:#e7c887; color:#2c2208;
     font-weight:900; font-size:15px; padding:5px 12px; border-radius:11px;
     box-shadow:0 2px 5px rgba(0,0,0,.3);
+    position:relative;   /* 소리 토글의 기준점 — 뱃지 자신의 크기는 달라지지 않는다 */
   }
+  /* 소리 토글 — 라운드 표시 바로 옆. absolute라 #roundCorner의 폭(86px: 주사위 묶음
+     시작 x좌표 계산에 쓰인다)에도, 세로 흐름에도 전혀 관여하지 않는다 → 배치 불변 */
+  #soundBtn {
+    position:absolute; left:100%; top:50%; transform:translateY(-50%); margin-left:3px;
+    width:22px; height:19px; padding:0; line-height:1; font-size:11px;
+    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.13);
+    border-radius:7px; opacity:.65; cursor:pointer;
+  }
+  #soundBtn.off { opacity:.38; }
   #bankruptBadge {
     background:#d15a4c; color:#fff; font-weight:800; font-size:11px;
     padding:5px 9px; border-radius:10px; text-align:center;
@@ -545,7 +608,7 @@
     <div class="tile c3" id="tile3"></div>
     <div id="throwZone">
       <div id="roundCorner">
-        <div id="roundBadge">1/4</div>
+        <div id="roundBadge"><span id="roundText">1/4</span><button id="soundBtn" type="button" aria-label="소리 켜기/끄기">🔊</button></div>
         <div id="bankruptBadge" style="display:none">은행 파산!<br>최종 라운드</div>
         <div id="deckStack"><i></i><i></i><i></i></div>
       </div>
@@ -606,6 +669,110 @@ const game = {
   bankrupt: false,
 };
 
+/* ===== 소리 =====
+   음원 파일도, 인코딩된 음원 데이터도 쓰지 않는다. 브라우저 내장 합성(Web Audio)으로
+   그때그때 파형을 만들어 낸다. 전부 fire-and-forget이라 게임 흐름을 한 순간도 잡아두지 않고,
+   무슨 이유로든 소리가 실패해도(오디오 미지원·차단·컨텍스트 죽음) 게임은 그대로 굴러간다.
+   iOS 사파리는 사용자가 화면을 한 번 만지기 전에는 소리를 못 내므로 첫 입력에서 깨운다. */
+const SND = { ctx:null, master:null, on:true, noise:null, lastHit:0 };
+const SND_VOL = 0.7;   // 전체 음량 — 개별 소리는 이 아래에서 서로 균형을 맞춘다
+
+function audioWake() {
+  try {
+    if (!SND.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      SND.ctx = new AC();
+      SND.master = SND.ctx.createGain();
+      SND.master.gain.value = SND.on ? SND_VOL : 0;
+      SND.master.connect(SND.ctx.destination);
+      // 또각거림·사락거림에 쓸 잡음은 딱 한 번만 만들어 두고 재생속도만 바꿔 돌려 쓴다
+      const n = Math.floor(SND.ctx.sampleRate * 0.25);
+      SND.noise = SND.ctx.createBuffer(1, n, SND.ctx.sampleRate);
+      const ch = SND.noise.getChannelData(0);
+      for (let i = 0; i < n; i++) ch[i] = Math.random() * 2 - 1;
+    }
+    if (SND.ctx.state === 'suspended') SND.ctx.resume();
+  } catch (e) { SND.ctx = null; }
+}
+// 첫 터치/클릭/키 입력에서 깨운다 (보통 시작 화면의 "게임 시작"이 그 첫 입력이다).
+// 캡처 단계 + 최초 등록이라 다른 핸들러(굴림 스킵 등)가 무엇을 하든 먼저 실행된다.
+['pointerdown', 'touchend', 'keydown'].forEach(ev =>
+  document.addEventListener(ev, audioWake, true));
+
+function sndCtx() { return SND.on && SND.ctx && SND.ctx.state === 'running' ? SND.ctx : null; }
+const sndRnd = (a, b) => a + Math.random() * (b - a);
+
+/* 음 하나: 파형 + 감쇠 포락선. to를 주면 그쪽으로 미끄러진다. delay(초)로 이어 붙인다 */
+function sndTone(from, to, dur, vol, type, delay) {
+  const c = sndCtx(); if (!c) return;
+  try {
+    const t = c.currentTime + (delay || 0);
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(from, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.010);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(SND.master);
+    o.start(t); o.stop(t + dur + 0.03);
+  } catch (e) {}
+}
+/* 잡음 하나를 필터에 통과시켜 "탁 / 사락" 같은 무음정 소리를 만든다 */
+function sndNoise(dur, vol, type, freq, q, rate, delay) {
+  const c = sndCtx(); if (!c || !SND.noise) return;
+  try {
+    const t = c.currentTime + (delay || 0);
+    const s = c.createBufferSource();
+    s.buffer = SND.noise; s.playbackRate.value = rate || 1;
+    const f = c.createBiquadFilter();
+    f.type = type; f.frequency.value = freq; f.Q.value = q || 1;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f); f.connect(g); g.connect(SND.master);
+    s.start(t); s.stop(t + dur + 0.03);
+  } catch (e) {}
+}
+/* 알 여덟 개가 동시에 부딪히면 시끄럽다 → 부딪힘 계열은 최소 간격을 둔다 */
+function sndHitGate(ms) {
+  const now = performance.now();
+  if (now - SND.lastHit < ms) return false;
+  SND.lastHit = now;
+  return true;
+}
+
+const SFX = {
+  // a. 손을 떠나는 순간
+  throw() { sndNoise(0.20, 0.10, 'bandpass', 1500, 0.8, sndRnd(0.9, 1.1)); sndTone(220, 120, 0.16, 0.06); },
+  // a. 구르며 부딪히는 또각 — 이어서 여러 번 나므로 음높이를 매번 흔들어 기계음을 피한다
+  // (Q를 좁게 잡으면 잡음 에너지가 대부분 깎여 나가 다른 소리에 묻힌다 → 실측해서 맞춘 값)
+  clack(v) { if (sndHitGate(38)) sndNoise(0.055, 0.13 * (v || 1), 'bandpass', sndRnd(1600, 2700), 1.6, sndRnd(0.85, 1.35)); },
+  // a. 바닥에 처음 닿는 착지 — 또각보다 낮고 묵직하게
+  land() { if (sndHitGate(34)) { sndNoise(0.09, 0.10, 'lowpass', sndRnd(700, 1000), 1, sndRnd(0.8, 1.1)); sndTone(150, 90, 0.09, 0.07); } },
+  // a. 같은 눈끼리 모여 정렬되는 순간
+  settle() { sndTone(520, 660, 0.12, 0.05, 'triangle'); },
+  // b. 눈 그룹 탭 — 가벼운 클릭
+  tap() { sndTone(sndRnd(880, 960), 0, 0.045, 0.09, 'triangle'); sndNoise(0.02, 0.04, 'highpass', 3000, 0.7, 1); },
+  // c. 확정 — 딱 놓이는 확실한 소리
+  place() { sndTone(400, 250, 0.13, 0.16, 'triangle'); sndNoise(0.06, 0.09, 'lowpass', 1200, 1, 1); },
+  // d. 지폐 한 장이 놓일 때 — 종이 사락
+  deal() { sndNoise(0.07, 0.07, 'highpass', sndRnd(1800, 2600), 0.8, sndRnd(0.9, 1.25)); },
+  // e/f. 화면이 넘어가는 전환음
+  page() { sndTone(300, 520, 0.14, 0.10, 'triangle'); },
+  round() { sndTone(392, 0, 0.12, 0.09, 'triangle'); sndTone(523, 0, 0.18, 0.09, 'triangle', 0.10); },
+  // e. 지폐 획득 — 두 음 상승
+  gain() { sndTone(660, 0, 0.10, 0.10, 'triangle'); sndTone(990, 0, 0.16, 0.09, 'triangle', 0.09); },
+  // e. 동점 상쇄 — 두 음 하강 (약간 부정적인 톤)
+  tie() { sndTone(330, 0, 0.14, 0.07, 'sawtooth', 0.18); sndTone(247, 0, 0.26, 0.07, 'sawtooth', 0.30); },
+  // g. 우승 화면 — 짧은 축하 아르페지오
+  fanfare() { [523, 659, 784, 1047].forEach((f, i) => sndTone(f, 0, i === 3 ? 0.34 : 0.13, i === 3 ? 0.12 : 0.09, 'triangle', i * 0.09)); },
+  // h. 차례가 넘어갈 때 — 아주 가벼운 신호 (확정음 뒤에 오도록 살짝 늦춘다)
+  turn() { sndTone(700, 0, 0.06, 0.05, 'sine', 0.20); },
+};
+
 /* ===== 유틸 ===== */
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -641,6 +808,35 @@ function dieFaceCells(face) {
   return cells;
 }
 function dieHTML(face) { return '<span class="dieIcon">' + dieFaceCells(face) + '</span>'; }
+
+/* 굴릴 때 쓰는 정육면체의 눈 배치. 마주보는 면의 합 = 7 (실물 주사위 규칙).
+   알마다 "확정된 눈이 앞면(cf-front)"이 되도록 배치를 통째로 돌려서 굽는다.
+   기준 배치(앞1·뒤6·오3·왼4·위2·아래5)를 그 눈이 앞에 오게 굴린 결과이므로
+   여섯 면 전부가 여전히 진짜 주사위다(합 7·손잡이 방향 유지) — 구르는 중 어느 각도에서 봐도 같다.
+   이 배치 덕분에 멈출 때 X·Y 회전이 정확히 0이어도 확정된 눈이 정면을 본다.
+   → 정지 자세에서 옆·뒤 다섯 면은 모두 뒤돌아선 상태가 되어 backface-visibility:hidden이
+     아예 그리지 않는다 = 옆면(어두운 띠)이 원리적으로 노출될 수 없다. */
+const CUBE_KEYS = ['front', 'back', 'right', 'left', 'top', 'bottom'];
+const CUBE_LAYOUTS = {
+  1: { front:1, back:6, right:3, left:4, top:2, bottom:5 },   // 기준 배치 그대로
+  2: { front:2, back:5, right:3, left:4, top:6, bottom:1 },   // 기준을 rotateX(-90)으로 굴린 배치
+  3: { front:3, back:4, right:6, left:1, top:2, bottom:5 },   // rotateY(-90)
+  4: { front:4, back:3, right:1, left:6, top:2, bottom:5 },   // rotateY(90)
+  5: { front:5, back:2, right:3, left:4, top:1, bottom:6 },   // rotateX(90)
+  6: { front:6, back:1, right:4, left:3, top:2, bottom:5 },   // rotateY(180)
+};
+/* 여섯 면은 대기 주사위와 똑같은 몸통색(diceBodyStyle)과 똑같은 겉모습(.dieSkin)을 쓴다.
+   면마다 다른 것은 눈 숫자뿐이다. 앞서 세우는 속상자(.cubeCore)는 둥근 귀퉁이의 구멍을 메운다 */
+function cubeFacesHTML(hex, face) {
+  const body = diceBodyStyle(hex);
+  const lay = CUBE_LAYOUTS[face] || CUBE_LAYOUTS[1];
+  return ['c1', 'c2'].map(c =>
+      CUBE_KEYS.map(k => '<div class="cubeCore ' + c + ' cf-' + k + '" style="' + body + '"></div>').join('')
+    ).join('') +
+    CUBE_KEYS.map(k =>
+      '<div class="cubeFace dieSkin cf-' + k + '" style="' + body + '">' + dieFaceCells(lay[k]) + '</div>'
+    ).join('');
+}
 
 function emblemSVG(n) {
   return '<svg class="emb" viewBox="0 0 24 24"><use href="#em' + n + '"/></svg>';
@@ -733,6 +929,17 @@ function buildNameInputs() {
   }
 }
 
+/* 소리 켜기/끄기 — 껐을 때는 볼륨을 0으로 내리는 동시에 소리를 아예 만들지도 않는다(완전 무음) */
+document.getElementById('soundBtn').addEventListener('click', () => {
+  audioWake();
+  const btn = document.getElementById('soundBtn');
+  SND.on = !SND.on;
+  if (SND.master) SND.master.gain.value = SND.on ? SND_VOL : 0;
+  btn.textContent = SND.on ? '🔊' : '🔇';
+  btn.classList.toggle('off', !SND.on);
+  if (SND.on) SFX.tap();
+});
+
 buildSeg(document.getElementById('playerSeg'), n => { selPlayers = n; buildNameInputs(); }, () => selPlayers);
 buildSeg(document.getElementById('roundSeg'), n => { selRounds = n; }, () => selRounds);
 buildNameInputs();
@@ -753,6 +960,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
   // 화면을 먼저 보여야 라운드 시작 연출이 좌표를 잡을 수 있다
   document.getElementById('startScreen').style.display = 'none';
   document.getElementById('gameScreen').classList.add('on');
+  SFX.round();
   startRound();
 });
 
@@ -905,7 +1113,7 @@ function renderSeats() {
     let diceHtml = '';
     for (let k = 0; k < nDice; k++) {
       const rot = (((i * 13 + k * 41) % 7) - 3) * 0.9; // 가지런하되 완전 기계적이지 않게
-      diceHtml += '<span class="mdie seatDie" style="' + diceBodyStyle(pl.color.hex) +
+      diceHtml += '<span class="mdie seatDie dieSkin" style="' + diceBodyStyle(pl.color.hex) +
         ';transform:rotate(' + rot + 'deg)">' + dieFaceCells((i + k) % 6 + 1) + '</span>';
     }
     // 액면별로 묶어 미니 지폐 + 장수. 폭 예산(WALLET_W) 안에 전부 들어가도록 크기를 고른다
@@ -1019,7 +1227,8 @@ function renderSeats() {
 
 /* ===== 렌더링 ===== */
 function renderCorner() {
-  document.getElementById('roundBadge').textContent = game.currentRound + '/' + game.roundsTotal;
+  // 뱃지 안에는 소리 토글도 함께 들어 있으므로 글자만 갈아 끼운다 (뱃지 통째로 지우면 안 된다)
+  document.getElementById('roundText').textContent = game.currentRound + '/' + game.roundsTotal;
   document.getElementById('bankruptBadge').style.display = game.bankrupt ? 'block' : 'none';
 }
 
@@ -1028,33 +1237,64 @@ function renderCorner() {
    색깔별 묶음을 카드 부채꼴처럼 옆으로 겹쳐 늘어놓고, 안 들어가면
    (1) 겹침을 더 촘촘히 → (2) 묶음을 두 줄로 → (3) 알 크기를 줄인다.
    ×N 뱃지는 개수 가독성을 위한 보조로 항상 함께 붙는다. 스크롤은 절대 만들지 않는다. */
-const PAD_INSET = 4;       // .tilePad padding
+const TILE_PAD = 14;       // .tile padding — CSS와 반드시 같은 값
+const SIGN_GAP = 7;        // .tileSign margin-bottom
+const RACK_GAP = 7;        // .tilePad margin-top — CSS와 반드시 같은 값
+const PAD_INSET = 5;       // .tilePad padding — 이 안쪽으로만 그린다
 const MIN_REVEAL = 0.17;   // 겹쳐도 아래 알이 최소 이만큼은 드러나야 셀 수 있다
-function fitPad(counts, W, H) {
-  const G = counts.length, GY = 3, GX = 6;
-  const badgeW = s => Math.max(18, s * 1.15);
-  for (let cols = 1; cols <= Math.min(3, G); cols++) {
-    const rows = Math.ceil(G / cols);
-    const cellW = (W - (cols - 1) * GX) / cols;
-    const cellH = (H - (rows - 1) * GY) / rows;
-    for (let s = 24; s >= 9; s -= 0.5) {
-      const stackW = cellW - badgeW(s) - 3;
-      if (stackW < s) continue;
-      for (const sub of [1, 2]) {                  // 한 묶음을 한 줄 또는 두 줄로
-        if (s * sub + (sub - 1) * 2 > cellH) continue;
+const PAD_GX = 8;          // 색 묶음 사이 가로 간격
+const PAD_GY = 6;          // 색 묶음 줄 간격 — 여러 색이 쌓여도 답답하지 않게
+const BADGE_GAP = 5;       // 주사위 묶음과 ×N 뱃지 사이 숨통
+const ROT_SLACK = 0.09;    // 알을 살짝 기울여 놓기 때문에 생기는 모서리 삐침 여유(알 크기 대비)
+
+function badgeFS(s) { return Math.max(9, Math.min(13, Math.round(s * 0.56))); }
+/* ×N 뱃지가 실제로 차지하는 폭. 어림잡으면(옛 max(18, s*1.15)) 두 자리 수에서 뱃지가
+   칸 밖으로 삐져나가 타일 테두리·옆 묶음과 겹친다 → 글자 수까지 넣어 정확히 잰다.
+   좌우 padding = fs*0.84, 글자는 '×' + 숫자들이고 900굵기 산세리프 자폭 ≈ 0.62em. */
+function badgeW(s, digits) {
+  const fs = badgeFS(s);
+  return BADGE_GAP + fs * 0.84 + (1 + digits) * fs * 0.62 + 2;
+}
+
+/* 알 크기를 큰 쪽부터 훑으며 "칸 안에 확실히 들어가는" 최대 크기를 찾는다.
+   가로 배치(cols)는 안쪽 반복이라 같은 크기면 줄 수가 적은 쪽이 먼저 잡힌다.
+   reveal = 겹쳤을 때 아래 알이 드러나야 하는 최소 비율(가독성 조건), minS = 허용 최소 알 크기.
+   들어갈 자리가 없으면 null → 호출부가 조건을 한 단계 풀어 다시 부른다. */
+function searchPad(counts, W, H, reveal, minS) {
+  const G = counts.length;
+  const digits = Math.max.apply(null, counts.map(n => String(n).length));
+  for (let s = 24; s >= minS; s -= 0.5) {
+    const slack = s * ROT_SLACK;
+    const rowGap = Math.max(2, s * 0.12);
+    for (let cols = 1; cols <= Math.min(4, G); cols++) {
+      const rows = Math.ceil(G / cols);
+      const cellW = (W - (cols - 1) * PAD_GX) / cols;
+      const cellH = (H - (rows - 1) * PAD_GY) / rows;
+      const stackW = cellW - badgeW(s, digits) - slack;   // 뱃지·기울임 여유를 뺀 나머지가 묶음 몫
+      if (stackW < s) continue;                           // 알 한 개도 못 들어가면 이 배치는 탈락
+      for (const sub of [1, 2]) {                         // 한 묶음을 한 줄 또는 두 줄로
+        if (s * sub + (sub - 1) * rowGap + slack > cellH) continue;
         const ok = counts.every(n => {
-          const k = Math.ceil(n / sub);            // 한 줄에 놓이는 최대 알 수
+          const k = Math.ceil(n / sub);                   // 한 줄에 놓이는 최대 알 수
           if (k <= 1) return true;
-          return (stackW - s) / (k - 1) >= s * MIN_REVEAL;
+          return (stackW - s) / (k - 1) >= s * reveal;
         });
-        if (ok) return { s, cols, rows, sub, cellW, cellH, stackW };
+        if (ok) return { s, cols, rows, sub, cellW, cellH, stackW, rowGap };
       }
     }
   }
-  // 마지막 안전망: 가장 작은 알로 두 줄씩 (그래도 알은 전부 보여준다)
-  const cols = Math.min(3, G), rows = Math.ceil(G / cols);
-  const cellW = (W - (cols - 1) * GX) / cols, cellH = (H - (rows - 1) * GY) / rows;
-  return { s: 9, cols, rows, sub: 2, cellW, cellH, stackW: Math.max(9, cellW - 18 - 3) };
+  return null;
+}
+
+/* 자리가 좁아질수록 조건을 순서대로 푼다:
+   (1) 넉넉히 → (2) 겹침을 더 촘촘히 + 알을 더 작게 → (3) 거의 포개더라도 전부 담는다.
+   어느 단계든 "칸 밖으로 넘치지 않는다"는 조건만은 절대 풀지 않는다. */
+function fitPad(counts, W, H) {
+  return searchPad(counts, W, H, MIN_REVEAL, 9)
+      || searchPad(counts, W, H, 0.09, 7)
+      || searchPad(counts, W, H, 0, 4)
+      || { s: 4, cols: 1, rows: counts.length, sub: 1, rowGap: 1,
+           cellW: W, cellH: H / counts.length, stackW: Math.max(4, W - badgeW(4, 2)) };
 }
 
 function fillPad(pad, cas, ci) {
@@ -1068,12 +1308,13 @@ function fillPad(pad, cas, ci) {
   const countFreq = {};
   entries.forEach(([, n]) => { countFreq[n] = (countFreq[n] || 0) + 1; });
 
-  const W = Math.max(40, pad.clientWidth - PAD_INSET * 2);
-  const H = Math.max(16, pad.clientHeight - PAD_INSET * 2);
+  // 실측값 그대로 쓴다 (하한을 두면 없는 공간에 그려 넣게 된다 → 테두리 침범)
+  const W = Math.max(0, pad.clientWidth - PAD_INSET * 2);
+  const H = Math.max(0, pad.clientHeight - PAD_INSET * 2);
   const lay = fitPad(entries.map(e => e[1]), W, H);
   const s = lay.s;
-  const fs = Math.max(9, Math.min(13, Math.round(s * 0.56)));
-  const GY = 3, GX = 6;
+  const fs = badgeFS(s);
+  const rowGap = lay.rowGap;
 
   let html = '';
   entries.forEach(([pi, n], gi) => {
@@ -1082,46 +1323,56 @@ function fillPad(pad, cas, ci) {
     const step = k > 1 ? Math.min(s * 0.62, (lay.stackW - s) / (k - 1)) : 0;
     const stackW = s + step * (k - 1);
     const rowsUsed = Math.ceil(n / k);
-    const stackH = s * rowsUsed + (rowsUsed - 1) * 2;
+    const stackH = s * rowsUsed + (rowsUsed - 1) * rowGap;
     let dice = '';
     for (let d = 0; d < n; d++) {
       const rr = Math.floor(d / k), cc = d % k;
-      const rot = ((ci * 5 + pi * 11 + d * 47) % 13) - 6;
-      dice += '<span class="mdie" style="' + diceBodyStyle(pl.color.hex) +
+      const rot = ((ci * 5 + pi * 11 + d * 47) % 9) - 4;     // ±4°까지만 — 여유(ROT_SLACK) 안에서 삐침이 끝난다
+      dice += '<span class="mdie dieSkin" style="' + diceBodyStyle(pl.color.hex) +
         ';width:' + s + 'px;height:' + s + 'px;padding:' + (s * 0.15).toFixed(1) + 'px;' +
-        'left:' + (cc * step).toFixed(1) + 'px;top:' + (rr * (s + 2)).toFixed(1) + 'px;' +
+        'left:' + (cc * step).toFixed(1) + 'px;top:' + (rr * (s + rowGap)).toFixed(1) + 'px;' +
         'z-index:' + (10 + d) + ';transform:rotate(' + rot + 'deg)">' + dieFaceCells(ci + 1) + '</span>';
     }
     const col = Math.floor(gi / lay.rows), row = gi % lay.rows;
-    const gx0 = PAD_INSET + col * (lay.cellW + GX);
-    const gy0 = PAD_INSET + row * (lay.cellH + GY) + Math.max(0, (lay.cellH - stackH) / 2);
+    // 칸 안에서 세로 가운데 정렬. 가로는 칸 왼쪽에 붙이되 기울임 여유만큼 안쪽으로 들인다.
+    const slack = s * ROT_SLACK / 2;
+    const gx0 = PAD_INSET + col * (lay.cellW + PAD_GX) + slack;
+    const gy0 = PAD_INSET + row * (lay.cellH + PAD_GY) + Math.max(slack, (lay.cellH - stackH) / 2);
     html += '<span class="mgroup' + (countFreq[n] >= 2 ? ' tie' : '') + '" style="' +
       'left:' + gx0.toFixed(1) + 'px;top:' + gy0.toFixed(1) + 'px;' +
       'height:' + stackH.toFixed(1) + 'px">' +
       '<span class="mstack" style="width:' + stackW.toFixed(1) + 'px;height:' + stackH.toFixed(1) + 'px">' +
       dice + '</span>' +
       '<span class="mcount" style="background:' + pl.color.hex + ';font-size:' + fs + 'px;' +
-      'padding:' + (fs * 0.2).toFixed(1) + 'px ' + (fs * 0.42).toFixed(1) + 'px;margin-left:3px">×' + n +
+      'padding:' + (fs * 0.2).toFixed(1) + 'px ' + (fs * 0.42).toFixed(1) + 'px;' +
+      'margin-left:' + BADGE_GAP + 'px">×' + n +
       '</span></span>';
   });
   pad.innerHTML = html;
 }
 
 function renderCasinos() {
-  const signH = layout.signH;
-  const chrome = 20 + signH + 7 + 5;   // 타일 패딩(20) + 간판 + 간판 아래 여백(7) + 패드 위 여백(5)
   game.casinos.forEach((cas, ci) => {
     const tile = document.getElementById('tile' + (ci + 1));
     tile.classList.toggle('selected', game.selectedFace === ci + 1);
 
+    // 타일 안에서 세로로 쓸 수 있는 전체 예산. 간판·지폐 거치대·주사위 패드가
+    // 이 예산을 나눠 갖고 합이 예산을 넘지 않는다 → 화면이 아무리 낮아도
+    // 내용이 타일 밖(=전구 점선 띠 위)으로 밀려나지 않는다.
+    const budget = Math.max(0, tile.clientHeight - TILE_PAD * 2 - SIGN_GAP - RACK_GAP);
+    const signH = Math.max(0, Math.min(layout.signH, Math.round(budget * 0.34)));
+
     // 간판: 카지노 상징 + 큰 주사위 눈
-    const iconH = Math.max(16, Math.round(signH * 0.72));
-    const embH = Math.max(12, Math.round(signH * 0.52));
+    const iconH = Math.max(8, Math.round(signH * 0.72));
+    const embH = Math.max(6, Math.round(signH * 0.52));
+    // 장식선은 상징 좌우의 독립 칸(.signRule)이다 — 뒤로 깔지 않으므로 겹칠 수 없다
     let html = '<div class="tileSign" style="height:' + signH + 'px">' +
+      '<span class="signRule"></span>' +
       '<svg class="emb" viewBox="0 0 24 24" style="width:' + embH + 'px;height:' + embH + 'px">' +
       '<use href="#em' + (ci + 1) + '"/></svg>' +
       '<span class="dieIcon" style="width:' + iconH + 'px;height:' + iconH + 'px">' +
-      dieFaceCells(ci + 1) + '</span></div>';
+      dieFaceCells(ci + 1) + '</span>' +
+      '<span class="signRule"></span></div>';
 
     // 지폐 거치대: 계단식으로 어긋나게 겹쳐 모든 장의 액면 숫자가 드러나게 한다.
     // 가로로 34%씩 밀면 아래 장의 왼쪽 큰 액면 숫자(폭의 12~29% 구간)가 항상 노출된다.
@@ -1130,11 +1381,14 @@ function renderCasinos() {
     // 남는 세로 공간을 지폐 거치대와 주사위 패드가 나눠 갖는다.
     // 주사위 색 묶음이 많을수록 패드 몫을 늘려서 알을 전부 담아도 스크롤이 생기지 않게 한다.
     const nG = Object.values(cas.dice).filter(n => n > 0).length;
-    const padShare = nG <= 2 ? 0.44 : (nG <= 4 ? 0.56 : 0.68);
-    const flexH = Math.max(52, tile.clientHeight - chrome);
-    const availH = flexH - Math.max(32, Math.round(flexH * padShare));
-    const innerW = Math.max(60, tile.clientWidth - 20);
-    const bw = Math.max(30, Math.min(150,
+    const padShare = nG <= 2 ? 0.44 : (nG <= 4 ? 0.56 : (nG <= 5 ? 0.68 : 0.76));
+    // 남은 예산(간판을 뺀 나머지)을 지폐 거치대와 주사위 패드가 나눠 갖는다.
+    // 하한(옛 max(52)/max(32)/max(30))을 두면 없는 공간을 있다고 치고 지폐를 키워
+    // 타일 밖으로 밀어내므로, 실제로 남은 만큼만 쓴다.
+    const rest = budget - signH;
+    const availH = rest - Math.round(rest * padShare);   // 지폐 거치대 몫 (나머지는 패드가 flex로 가져간다)
+    const innerW = Math.max(20, tile.clientWidth - TILE_PAD * 2);
+    const bw = Math.max(12, Math.min(150,
       Math.floor(innerW / (1 + SX * (nB - 1))),
       Math.floor(availH * 2.3 / (1 + SY * (nB - 1)))));
     const bh = Math.round(bw / 2.3);
@@ -1173,7 +1427,7 @@ function renderBottom() {
   if (!game.rolled) {
     clearAnimTimers();
     anim.active = false; anim.grouped = false;
-    document.querySelectorAll('#diceLayer .die3d, #throwZone .grpHit').forEach(e => e.remove());
+    document.querySelectorAll('#diceLayer > *, #throwZone .grpHit').forEach(e => e.remove());
   }
   updateHintAndButtons();
 }
@@ -1209,7 +1463,7 @@ window.addEventListener('orientationchange', onViewportChange);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', onViewportChange);
 
 /* ===== 주사위 던지기 연출 (확정된 결과의 포장) ===== */
-const anim = { active:false, grouped:false, timers:[], raf:null, dice:[], faces:[], size:52, x0:104, skipHandler:null };
+const anim = { active:false, grouped:false, timers:[], raf:null, dice:[], faces:[], size:52, x0:104, hex:'#cf5344', skipHandler:null };
 
 function clearAnimTimers() {
   anim.timers.forEach(t => clearTimeout(t));
@@ -1221,9 +1475,30 @@ function clearAnimTimers() {
   }
 }
 
-function setDieAt(d, x, y, rot, sc) {
-  d.el.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px) rotate(' +
-    rot.toFixed(1) + 'deg)' + (sc && sc !== 1 ? ' scale(' + sc.toFixed(3) + ')' : '');
+/* 주사위 한 알을 그린다. 바깥틀은 화면상의 위치·크기만, 안틀은 상자의 자세만 맡는다
+   → 원근(바깥틀의 perspective)이 회전에 항상 제대로 걸린다.
+   자세 순서: Y로 돌리고 → X로 굴리고 → 마지막에 Z(화면 평면)로 기울인다.
+   Z가 맨 앞(=가장 나중에 적용)이라 정면을 향한 면은 Z를 아무리 돌려도 계속 정면이다. */
+function setDieAt(d, x, y, rz, sc, rx, ry) {
+  d.el.style.transform =
+    'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)' +
+    (sc && sc !== 1 ? ' scale(' + sc.toFixed(3) + ')' : '');
+  d.inner.style.transform =
+    'rotateZ(' + rz.toFixed(1) + 'deg)' +
+    ' rotateX(' + (rx || 0).toFixed(1) + 'deg)' +
+    ' rotateY(' + (ry || 0).toFixed(1) + 'deg)';
+}
+
+/* 그림자는 알을 따라가되 "바닥" 높이에 남는다. 알이 높이 뜰수록 넓게 퍼지고 옅어진다
+   → 화면상 위로 움직인 게 점프인지 그냥 이동인지가 그림자로 구분된다. */
+function setShadowAt(d, x, groundY, lift) {
+  if (!d.sh) return;
+  const hn = Math.min(1, Math.max(0, lift) / 120);
+  d.sh.style.transform =
+    'translate(' + (x + (anim.size - d.shW) / 2).toFixed(1) + 'px,' +
+    (groundY + anim.size * 0.80).toFixed(1) + 'px)' +
+    ' scale(' + (1 + hn * 0.55).toFixed(3) + ')';
+  d.sh.style.opacity = Math.max(0.14, 0.64 - hn * 0.48).toFixed(3);
 }
 
 function startRollAnimation(faces) {
@@ -1247,6 +1522,7 @@ function startRollAnimation(faces) {
     Math.floor(R.height * 0.54)));
   anim.size = size;
   const hex = game.players[game.turn].color.hex;
+  anim.hex = hex;
   const seat = tableGeo.seats[game.turn] || { x: F.x + F.w / 2, y: F.y + F.h + 200 };
   const sx = seat.x - size / 2, sy = seat.y - size / 2;   // 전부 화면 좌표계
   const now = performance.now();
@@ -1254,11 +1530,21 @@ function startRollAnimation(faces) {
   const minY = F.y + 4, maxY = F.y + F.h - size - 4;
 
   anim.dice = faces.map((f, i) => {
+    // 진짜 상자: 바깥틀(원근·위치) → 안틀(preserve-3d) → 여섯 면
     const el = document.createElement('div');
-    el.className = 'die3d tumb';
-    el.style.cssText = diceBodyStyle(hex) + ';width:' + size + 'px;height:' + size + 'px;padding:' + Math.round(size * 0.16) + 'px;';
-    el.innerHTML = dieFaceCells(1 + Math.floor(Math.random() * 6)); // 시각용 임시 눈
+    el.className = 'dieCube';
+    el.style.cssText = 'width:' + size + 'px;height:' + size + 'px;' +
+      'perspective:' + Math.round(size * 7) + 'px;--h:' + (size / 2).toFixed(1) + 'px;';
+    const inner = document.createElement('div');
+    inner.className = 'cubeInner';
+    inner.innerHTML = cubeFacesHTML(hex, f);   // 확정된 눈을 앞면에 굽는다 → 정지 자세는 X·Y = 0
+    el.appendChild(inner);
     layerEl.appendChild(el);
+    const shW = size * 1.06, shH = size * 0.40;
+    const sh = document.createElement('div');
+    sh.className = 'dieShadow';
+    sh.style.cssText = 'width:' + shW.toFixed(1) + 'px;height:' + shH.toFixed(1) + 'px;opacity:0';
+    layerEl.appendChild(sh);
     // 멈추는 자리는 테이블 전역 아무 데나 (카지노 타일 위여도 상관없다)
     const tx = minX + Math.random() * Math.max(10, maxX - minX);
     const ty = minY + Math.random() * Math.max(10, maxY - minY);
@@ -1273,24 +1559,50 @@ function startRollAnimation(faces) {
       if (Math.abs(cx - qx) > 10 || Math.abs(cy - qy) > 10) p1 = { x: cx, y: cy };  // 실제로 벽에 닿았을 때만
     }
     const d = {
-      el, face: f, locked: false, lastFace: 0,
+      el, inner, sh, shW, face: f,
       // 손에서 떠나는 지점·시각·속도·거리가 알마다 다르다 (똑같이 움직이면 가짜로 보인다)
       sx: s0x, sy: s0y, tx, ty, p1,
       t0: now + i * 26,
-      dur: 660 + Math.random() * 320,
+      dur: 680 + Math.random() * 320,
       land: 0.62 + Math.random() * 0.08,          // 이 시점에 바닥에 닿는다
       arc: 40 + Math.random() * 54,               // 던진 방향으로 솟는 포물선 높이
       bounce: size * (0.20 + Math.random() * 0.18),
-      spin: (Math.random() < 0.5 ? -1 : 1) * (460 + Math.random() * 420),
-      rotEnd: Math.random() * 26 - 13,            // 각자 다른 최종 각도 (삐뚤빼뚤)
+      // 상자는 여섯 면이 다 있으므로 각도를 묶을 이유가 없다 → 세 축 모두 여러 바퀴 돌린다.
+      // X·Y는 "정수 바퀴"만 돈다 → 감속이 끝나면 남는 각이 정확히 0이다(= 확정된 눈이 정면, 옆면 없음).
+      turnX: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.floor(Math.random() * 3)),  // 앞뒤 구르기 바퀴 수
+      turnY: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.floor(Math.random() * 2)),  // 좌우 구르기 바퀴 수
+      // Z(화면 평면)는 마지막에 걸리므로 어떤 값이든 정면 면을 바꾸지 않는다 → 자유롭게 돌린다
+      spin: (Math.random() < 0.5 ? -1 : 1) * (540 + Math.random() * 420),
+      // 멈춘 뒤의 기울기는 Z(화면 평면)에만 남긴다 — 알마다 삐뚤빼뚤하되 옆면은 안 보인다
+      rotEnd: (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 6),
+      wobDir: Math.random() < 0.5 ? -1 : 1,       // 착지 후 흔들리는 방향
     };
-    setDieAt(d, d.sx, d.sy, d.rotEnd + d.spin, 1);
+    setDieAt(d, d.sx, d.sy, d.rotEnd + d.spin, 1, d.turnX * 360, d.turnY * 360);
+    setShadowAt(d, d.sx, d.sy, 0);
     return d;
   });
 
   const endAt = Math.max(...anim.dice.map(d => d.t0 + d.dur));
   anim.raf = requestAnimationFrame(stepRoll);
   anim.timers.push(setTimeout(() => finishRollAnimation(true), Math.max(120, endAt - now + 80)));
+
+  /* 소리: stepRoll이 쓰는 값(t0·dur·land·p1)을 그대로 읽어 "닿는 순간"만 뽑아 예약한다.
+     연출 계산에는 손대지 않으므로 궤적·타이밍은 조금도 달라지지 않는다.
+     예약은 anim.timers에 넣어 둔다 → 탭으로 스킵하면 남은 또각거림도 함께 사라진다.
+       · easeThrow(t)=0.64 지점 = 벽에 부딪혀 되튀는 순간 (t≈0.325)
+       · t=land 첫 착지, 이후 lift 곡선이 0이 되는 t=land+(1-land)/2 와 t=1 이 두 번의 튐 */
+  SFX.throw();
+  const hits = [];
+  anim.dice.forEach(d => {
+    const at = d.t0 - now;
+    if (d.p1) hits.push({ t: at + d.dur * 0.325, v: 0.7 });
+    hits.push({ t: at + d.dur * d.land, land: true });
+    hits.push({ t: at + d.dur * (d.land + (1 - d.land) * 0.5), v: 0.55 });
+    hits.push({ t: at + d.dur, v: 0.35 });
+  });
+  hits.sort((a, b) => a.t - b.t);
+  hits.forEach(h => anim.timers.push(setTimeout(
+    () => { h.land ? SFX.land() : SFX.clack(h.v); }, Math.max(0, h.t))));
 
   // 연출 중 아무 곳 탭 → 즉시 완료 상태로 스킵
   anim.skipHandler = (e) => {
@@ -1303,6 +1615,7 @@ function startRollAnimation(faces) {
 }
 
 const easeThrow = t => 1 - Math.pow(1 - t, 2.6);   // 던진 직후 빠르고 끝에서 잦아든다
+const easeSpin  = t => 1 - Math.pow(1 - t, 2.2);   // 회전도 같이 감속 — 착지 시점에 딱 멎는다
 
 function stepRoll(now) {
   anim.raf = null;
@@ -1323,23 +1636,40 @@ function stepRoll(now) {
       x = d.p1.x + (d.tx - d.p1.x) * u;
       y = d.p1.y + (d.ty - d.p1.y) * u;
     }
-    let sc = 1;
+    const groundY = y;                 // 그림자가 남는 높이 (뜬 만큼 빼기 전)
+
+    // --- 높이(lift): 포물선으로 날아올랐다가 착지 후 두 번 튄다 ---
+    let lift, sc = 1;
     if (t < d.land) {
-      y -= d.arc * Math.sin(Math.PI * (t / d.land));            // 날아가는 포물선
+      lift = d.arc * Math.sin(Math.PI * (t / d.land));
     } else {
-      const b = (t - d.land) / (1 - d.land);                     // 착지 후 두 번 튀기
+      const b = (t - d.land) / (1 - d.land);
       const damp = 1 - b;
-      y -= d.bounce * Math.abs(Math.sin(Math.PI * b * 2)) * damp;
-      sc = 1 + 0.07 * Math.sin(Math.PI * b * 2) * damp;          // 닿는 순간 살짝 눌림
+      lift = d.bounce * Math.abs(Math.sin(Math.PI * b * 2)) * damp;
+      sc *= 1 + 0.07 * Math.sin(Math.PI * b * 2) * damp;        // 닿는 순간 살짝 눌림
     }
-    setDieAt(d, x, y, d.rotEnd + d.spin * (1 - e), sc);
-    if (t < d.land) {                                            // 구르는 동안 눈이 계속 바뀐다
-      if (now - d.lastFace > 46) { d.el.innerHTML = dieFaceCells(1 + Math.floor(Math.random() * 6)); d.lastFace = now; }
-    } else if (!d.locked) {
-      d.locked = true;
-      d.el.innerHTML = dieFaceCells(d.face);
-      d.el.classList.remove('tumb');                             // 그림자가 바닥에 안착
+    y -= lift;
+    sc *= 1 + Math.min(0.30, lift / 300);                        // 높이 뜰수록 카메라에 가까워 커 보인다
+
+    // --- 회전: 세 축 모두 여러 바퀴 돌다가 착지 시점에 맞춰 감속해 멎는다.
+    // 남은 회전량(left)이 0이 되는 순간 X·Y는 정확히 0 — 곧 확정된 눈(앞면)이 정면이다. ---
+    const rp = Math.min(1, t / d.land);
+    const left = 1 - easeSpin(rp);                               // 남은 회전량 비율
+    let rx = d.turnX * 360 * left;
+    let ry = d.turnY * 360 * left;
+    let rz = d.rotEnd + d.spin * left;
+    // 착지한 뒤에는 화면 평면(Z)에서만 흔들리다 멎는다 (t=1에서 정확히 0으로 잦아든다).
+    // 앞뒤로 끄덕이면(X축) 그 순간 옆면이 드러나므로, 흔들림은 Z에만 싣고
+    // 눌림(sc)과 튐(lift)이 착지의 무게를 맡는다 → 바닥에 닿은 뒤로는 X·Y가 계속 정확히 0이다.
+    if (t >= d.land) {
+      const b = (t - d.land) / (1 - d.land);
+      const wob = Math.sin(b * Math.PI * 3.2) * Math.pow(1 - b, 2);
+      rz += wob * 11 * d.wobDir;
     }
+    if (t >= 1) { rx = 0; ry = 0; rz = d.rotEnd; }                // 멎은 순간엔 Z 기울기만 남긴다(옆면 노출 0)
+
+    setDieAt(d, x, y, rz, sc, rx, ry);
+    setShadowAt(d, x, groundY, lift);
   }
   anim.raf = requestAnimationFrame(stepRoll);
 }
@@ -1347,13 +1677,9 @@ function stepRoll(now) {
 function finishRollAnimation(animate) {
   if (anim.grouped) return;
   clearAnimTimers();
+  SFX.settle();
   anim.grouped = true;
-  anim.dice.forEach(d => {
-    d.locked = true;
-    d.el.innerHTML = dieFaceCells(d.face);
-    d.el.classList.remove('tumb');
-  });
-  placeGroups(animate);
+  placeGroups(animate);   // 여기서 모든 알이 "확정된 눈이 정면" 자세로 고정된다
   updateHintAndButtons();
 }
 
@@ -1378,8 +1704,15 @@ function placeGroups(animate) {
     const x0 = X0 + gi * slotW + (slotW - (size + off * (n - 1))) / 2;
     // 타일을 가리지 않도록 던지기존 안쪽으로 모은다
     const y0 = R.top + Math.max(2, (R.height - size) / 2 - 6);
-    // 모아둔 뒤에도 알마다 각도를 조금씩 달리해 기계적으로 줄 세운 느낌을 없앤다
-    members.forEach((d, mi) => plan.push({ d, x: x0 + mi * off, y: y0, rot: (mi % 2 ? 6 : -5) + d.rotEnd * 0.25 }));
+    // 모아 세운 뒤에도 알마다 각도를 달리해 기계적으로 줄 세운 느낌을 없앤다.
+    // 단 기울기는 Z(화면 평면에서 빙그르 도는 회전)에만 준다 — X·Y는 정확히 0이라
+    // 옆·뒤 다섯 면이 전부 뒤돌아선 상태가 되어 어두운 띠가 노출될 수 없다.
+    // 이웃끼리는 부호를 엇갈리게 해 같은 눈 묶음 안에서도 서로 다른 각도로 눕는다.
+    members.forEach((d, mi) => plan.push({
+      d, x: x0 + mi * off, y: y0,
+      rot: (mi % 2 ? 1 : -1) * Math.abs(d.rotEnd),
+      rx: 0, ry: 0,
+    }));
 
     const hit = document.createElement('button');
     hit.className = 'grpHit';
@@ -1393,12 +1726,20 @@ function placeGroups(animate) {
   });
 
   // 전환 클래스를 먼저 확정하고 리플로우를 강제한 뒤 좌표를 준다 → 전환이 확실히 걸린다
-  plan.forEach(p => p.d.el.classList.toggle('grouping', !!animate));
+  plan.forEach(p => {
+    p.d.el.classList.toggle('grouping', !!animate);
+    if (p.d.sh) p.d.sh.classList.toggle('grouping', !!animate);
+  });
   void tz.offsetWidth;
-  plan.forEach(p => setDieAt(p.d, p.x, p.y, p.rot, 1));
+  plan.forEach(p => {
+    p.d.restZ = p.rot;               // 카지노로 날아가는 알이 이 기울기를 그대로 이어받는다
+    setDieAt(p.d, p.x, p.y, p.rot, 1, p.rx, p.ry);
+    setShadowAt(p.d, p.x, p.y, 0);   // 바닥에 안착 (뜬 높이 0)
+  });
 }
 
 function selectFace(f) {
+  SFX.tap();
   game.selectedFace = f;   // 확정 전 재탭으로 변경 가능
   renderCasinos();
   document.querySelectorAll('.grpHit').forEach(h => h.classList.toggle('sel', +h.dataset.face === f));
@@ -1410,11 +1751,19 @@ function flyDiceToCasino(f) {
   const tile = document.getElementById('tile' + f);
   if (!tile || !anim.dice.length) return;
   const tR = tile.getBoundingClientRect();
+  const size = anim.size;
   anim.dice.filter(d => d.face === f).forEach((d, i) => {
     const r = d.el.getBoundingClientRect();
-    const c = d.el.cloneNode(true);
-    c.style.cssText = d.el.style.cssText;
+    // 타일로 들어가면서 20px까지 작아지므로 상자를 그대로 끌고 가지 않는다.
+    // 가독성이 전부인 구간이라 여기서부터는 평면 표현(타일 위 주사위와 같은 표현)으로 바꾼다.
+    const c = document.createElement('div');
+    c.className = 'die3d dieSkin';
+    c.innerHTML = dieFaceCells(f);
+    c.style.cssText = diceBodyStyle(anim.hex) +
+      ';width:' + size + 'px;height:' + size + 'px;padding:' + (size * 0.15).toFixed(1) + 'px;';
     c.style.position = 'fixed';
+    // 멈춰 있던 Z 기울기를 그대로 이어받는다 (평면 표현이라 옆면 자체가 없다)
+    c.style.transform = 'rotate(' + (d.restZ !== undefined ? d.restZ : d.rotEnd).toFixed(1) + 'deg)';
     c.style.left = r.left + 'px';
     c.style.top = r.top + 'px';
     c.style.zIndex = 90;
@@ -1448,6 +1797,7 @@ document.getElementById('rollBtn').addEventListener('click', () => {
 
 document.getElementById('confirmBtn').addEventListener('click', () => {
   if (game.finished || game.selectedFace === null) return;
+  SFX.place();
   flyDiceToCasino(game.selectedFace); // 연출 (확정된 결과의 포장)
   const f = game.selectedFace;
   const n = game.rolled[f];
@@ -1469,6 +1819,7 @@ function advanceTurn() {
     const idx = (game.turn + step) % game.players.length;
     if (game.players[idx].diceLeft > 0) {
       game.turn = idx;
+      SFX.turn();
       return;
     }
   }
@@ -1535,6 +1886,7 @@ function startDealAnimation() {
       outer.appendChild(inner);
       document.body.appendChild(outer);
       clones.push(outer);
+      SFX.deal();   // 한 장이 날아오르는 바로 그 순간 (스킵하면 이 타이머째 사라져 소리도 멎는다)
       requestAnimationFrame(() => {
         outer.style.left = r.left + 'px';
         outer.style.top = r.top + 'px';
@@ -1555,6 +1907,7 @@ function startDealAnimation() {
 function flyBillToSeat(v, pi) {
   const seat = tableGeo.seats[pi];
   if (!seat) return;
+  SFX.gain();
   const wrap = document.createElement('div');
   wrap.innerHTML = billHTML(v);
   const b = wrap.firstChild;
@@ -1608,6 +1961,8 @@ function settleCasino(ci) {
 function showSettleCasino() {
   const ci = game.settle.idx;
   const r = settleCasino(ci);
+  SFX.page();                          // 카지노가 한 곳 넘어간다
+  if (r.eliminated.length) SFX.tie();  // 상쇄가 있으면 전환음 뒤에 겹치지 않게 이어 붙는다
   renderAll();
 
   let html = '<h2 class="goldText">정산 — 카지노 ' + (ci + 1) + '</h2>';
@@ -1669,6 +2024,7 @@ function showSettleDone() {
     panel.innerHTML = '<div class="settleDoneMsg goldText">정산 완료</div>' +
       '<button id="nextRoundBtn">' + next + '라운드 시작</button>';
     document.getElementById('nextRoundBtn').addEventListener('click', () => {
+      SFX.round();
       // 전원 주사위 8개 복구 → 선 교대 → 라운드 +1 → 기존 더미에서 재충전 → 게임판 복귀
       game.players.forEach(p => { p.diceLeft = DICE_PER_PLAYER; });
       game.starter = (game.starter + 1) % game.players.length;
@@ -1683,6 +2039,7 @@ function showSettleDone() {
 
 /* ===== 우승 판정 ===== */
 function showWinners() {
+  SFX.fanfare();
   // 총액 내림차순 → 같으면 지폐 장수 → 그것도 같으면 공동 순위 (총액은 게임 내내 공개 상태)
   const rows = game.players
     .map(p => ({
@@ -1714,6 +2071,7 @@ function showWinners() {
   const panel = document.getElementById('settlePanel');
   panel.innerHTML = html;
   document.getElementById('againBtn').addEventListener('click', () => {
+    SFX.page();
     game.players = []; game.deck = []; game.casinos = [];
     game.currentRound = 1; game.turn = 0; game.rolled = null; game.selectedFace = null;
     game.finished = false; game.settle = null; game.starter = 0; game.bankrupt = false;
